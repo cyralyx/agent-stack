@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+<title>AgentStack</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --bg2: #1e293b;
+    --card: #16203a;
+    --border: #2a3a5c;
+    --text: #e2e8f0;
+    --dim: #94a3b8;
+    --blue: #38bdf8;
+    --purple: #a78bfa;
+    --green: #34d399;
+    --red: #f87171;
+    --amber: #fbbf24;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: radial-gradient(1200px 600px at 50% -10%, #1a2b4a 0%, var(--bg) 60%);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 20px 28px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { width: 46px; height: 46px; border-radius: 12px; }
+  .title h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.3px; }
+  .title p { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  main { flex: 1; padding: 24px 28px; overflow-y: auto; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px;
+    transition: transform .15s ease, border-color .15s ease;
+  }
+  .card:hover { transform: translateY(-2px); }
+  .card .icon { font-size: 26px; margin-bottom: 8px; }
+  .card h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .card .path { font-size: 11px; color: var(--dim); margin-top: 6px; word-break: break-all; font-family: 'Cascadia Code', Consolas, monospace; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .dot.ok { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .dot.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .dot.warn { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .badge { font-size: 10px; padding: 2px 8px; border-radius: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+  .badge.ok { background: rgba(52,211,153,.15); color: var(--green); }
+  .badge.bad { background: rgba(248,113,113,.15); color: var(--red); }
+  .badge.warn { background: rgba(251,191,36,.15); color: var(--amber); }
+  .gate {
+    background: linear-gradient(135deg, rgba(56,189,248,.08), rgba(167,139,250,.08));
+    border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 22px; margin-bottom: 22px;
+  }
+  .gate.ok { border-color: rgba(52,211,153,.5); }
+  .gate h2 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .gate p { font-size: 12.5px; color: var(--dim); }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab {
+    background: transparent; border: 1px solid var(--border); color: var(--dim);
+    padding: 8px 18px; border-radius: 10px; font-size: 13px; cursor: pointer;
+    font-weight: 500; transition: all .15s;
+  }
+  .tab:hover { color: var(--text); border-color: var(--blue); }
+  .tab.active { background: rgba(56,189,248,.12); color: var(--blue); border-color: var(--blue); }
+  .panel { display: none; }
+  .panel.active { display: block; animation: fade .25s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+  textarea {
+    width: 100%; min-height: 120px; background: var(--bg2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+    font-size: 14px; font-family: inherit; resize: vertical; outline: none;
+  }
+  textarea:focus { border-color: var(--blue); }
+  .row { display: flex; gap: 10px; margin-top: 10px; }
+  .btn {
+    background: linear-gradient(135deg, #0284c7, #7c3aed); color: #fff;
+    border: none; padding: 10px 22px; border-radius: 10px; font-size: 13.5px;
+    font-weight: 600; cursor: pointer; transition: opacity .15s;
+  }
+  .btn:hover { opacity: .88; }
+  .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--dim); }
+  .btn.ghost:hover { color: var(--text); border-color: var(--blue); }
+  .out {
+    margin-top: 14px; background: #0b1220; border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px; font-size: 13px; color: var(--text);
+    white-space: pre-wrap; font-family: 'Cascadia Code', Consolas, monospace;
+    min-height: 60px; max-height: 340px; overflow-y: auto;
+  }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--dim); border-top-color: var(--blue); border-radius: 50%; animation: rot .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  footer { padding: 12px 28px; border-top: 1px solid var(--border); font-size: 11px; color: var(--dim); display: flex; justify-content: space-between; align-items: center; }
+  .btn.danger { background: rgba(248,113,113,.15); color: var(--red); border: 1px solid rgba(248,113,113,.4); }
+</style>
+</head>
+<body>
+<header>
+  <img class="logo" src="logo.png" alt="AgentStack">
+  <div class="title">
+    <h1>AgentStack</h1>
+    <p>Hermes brain · OpenClaw hands · Obsidian memory — one clean system</p>
+  </div>
+</header>
+
+<main>
+  <div class="grid" id="cards"></div>
+
+  <div class="gate" id="gate">
+    <h2 id="gate-title">Checking system…</h2>
+    <p id="gate-detail"></p>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-panel="ask">Ask</button>
+    <button class="tab" data-panel="council">Council</button>
+    <button class="tab" data-panel="todo">Tasks</button>
+  </div>
+
+  <div class="panel active" id="panel-ask">
+    <textarea id="ask-input" placeholder="Ask the brain anything… e.g. 'summarize my vault notes from yesterday'"></textarea>
+    <div class="row">
+      <button class="btn" id="ask-btn">Ask brain</button>
+      <button class="btn ghost" id="ask-hand-btn">Send to hands (OpenClaw)</button>
+    </div>
+    <div class="out" id="ask-out" hidden></div>
+  </div>
+
+  <div class="panel" id="panel-council">
+    <textarea id="council-input" placeholder="Bring the council to a question… (cheap chairman mode)"></textarea>
+    <div class="row">
+      <button class="btn" id="council-btn">Run council</button>
+      <button class="btn ghost" id="council-history-btn">History</button>
+    </div>
+    <div class="out" id="council-out" hidden></div>
+  </div>
+
+  <div class="panel" id="panel-todo">
+    <div class="row">
+      <input id="todo-input" type="text" placeholder="Add a task…" style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text);outline:none;font-size:13px">
+      <button class="btn" id="todo-add-btn">Add</button>
+      <button class="btn ghost" id="todo-list-btn">List</button>
+    </div>
+    <div class="out" id="todo-out" hidden></div>
+  </div>
+</main>
+
+<footer>
+  <span id="foot-left">AgentStack v0.1.0</span>
+  <span id="foot-right">All three components required: Hermes · OpenClaw · Obsidian</span>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const icons = { hermes: '🧠', openclaw: '🦞', vault: '📓' };
+
+async function refresh() {
+  const s = await window.agentstack.status();
+  renderCards(s);
+  renderGate(s);
+}
+
+function renderCards(s) {
+  const cards = [
+    { key: 'hermes', label: 'Hermes — Brain', icon: '🧠', ok: !!s.hermes, path: s.hermes || 'not found', color: 'var(--blue)' },
+    { key: 'openclaw', label: 'OpenClaw — Hands', icon: '🦞', ok: !!s.openclaw, path: s.openclaw || 'not found', color: 'var(--purple)' },
+    { key: 'vault', label: 'Obsidian — Memory', icon: '📓', ok: !!s.vault, path: s.vault || 'not found', color: 'var(--green)' },
+  ];
+  $('cards').innerHTML = cards.map((c) => `
+    <div class="card">
+      <div class="icon">${c.icon}</div>
+      <h3><span class="dot ${c.ok ? 'ok' : 'bad'}"></span>${c.label}
+        <span class="badge ${c.ok ? 'ok' : 'bad'}">${c.ok ? 'Present' : 'Missing'}</span></h3>
+      <div class="path">${c.path}</div>
+    </div>`).join('');
+}
+
+function renderGate(s) {
+  const all = s.hermes && s.openclaw && s.vault;
+  const g = $('gate');
+  g.className = 'gate' + (all ? ' ok' : '');
+  if (all) {
+    $('gate-title').textContent = '✓ All systems present — AgentStack is ready';
+    const tokenState = s.token && s.token.set ? 'OpenRouter token set' : 'OpenRouter token NOT set (see .env)';
+    $('gate-detail').textContent = `Hermes + OpenClaw + Obsidian all detected. ${tokenState}.`;
+  } else {
+    const missing = [];
+    if (!s.hermes) missing.push('Hermes');
+    if (!s.openclaw) missing.push('OpenClaw');
+    if (!s.vault) missing.push('Obsidian vault');
+    $('gate-title').textContent = '⚠ Required components missing';
+    $('gate-detail').textContent = `AgentStack needs all three: ${missing.join(', ')}. Install the missing component, then restart the app.`;
+  }
+}
+
+function busy(btn, on) {
+  btn.disabled = on;
+  btn.innerHTML = on ? '<span class="spin"></span>Working…' : btn.dataset.orig || btn.textContent;
+}
+
+function show(id, text) {
+  const el = $(id);
+  el.hidden = false;
+  el.textContent = text;
+}
+
+$('tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+  tab.classList.add('active');
+  $('panel-' + tab.dataset.panel).classList.add('active');
+});
+
+$('ask-btn').addEventListener('click', async () => {
+  const q = $('ask-input').value.trim();
+  if (!q) return;
+  const btn = $('ask-btn');
+  btn.dataset.orig = 'Ask brain';
+  busy(btn, true);
+  try {
+    const r = await window.agentstack.ask(q);
+    show('ask-out', (r.ok ? '' : '⚠ ' + (r.err || 'error') + '\n\n') + (r.out || '(no output)'));
+  } finally { busy(btn, false); }
+});
+
+$('ask-hand-btn').addEventListener('click', async () => {
+  const q = $('ask-input').value.trim();
+  if (!q) return;
+  const btn = $('ask-hand-btn');
+  btn.dataset.orig = 'Send to hands (OpenClaw)';
+  busy(btn, true);
+  show('ask-out', 'Routing to OpenClaw (hands)…');
+  try {
+    const r = await window.agentstack.ask(q + ' (do this, hands)');
+    show('ask-out', (r.ok ? '' : '⚠ ' + (r.err || 'error') + '\n\n') + (r.out || '(no output)'));
+  } finally { busy(btn, false); }
+});
+
+$('council-btn').addEventListener('click', async () => {
+  const q = $('council-input').value.trim();
+  if (!q) return;
+  const btn = $('council-btn');
+  btn.dataset.orig = 'Run council';
+  busy(btn, true);
+  try {
+    const r = await window.agentstack.council(q);
+    show('council-out', (r.ok ? '' : '⚠ ' + (r.err || 'error') + '\n\n') + (r.out || '(no output)'));
+  } finally { busy(btn, false); }
+});
+
+$('council-history-btn').addEventListener('click', async () => {
+  const r = await window.agentstack.council('--history');
+  show('council-out', r.out || r.err || '(no history)');
+});
+
+$('todo-add-btn').addEventListener('click', async () => {
+  const t = $('todo-input').value.trim();
+  if (!t) return;
+  const r = await window.agentstack.todo('add', t);
+  show('todo-out', r.data || r.err);
+  $('todo-input').value = '';
+  const l = await window.agentstack.todo('list');
+  show('todo-out', (r.data || '') + '\n' + l.data);
+});
+
+$('todo-list-btn').addEventListener('click', async () => {
+  const r = await window.agentstack.todo('list');
+  show('todo-out', r.data || r.err);
+});
+
+refresh();
+</script>
+</body>
+</html>
