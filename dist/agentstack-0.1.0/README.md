@@ -92,35 +92,13 @@ agent-stack/
 
 ---
 
-## 🚀 Quick start — one clean system
+## 🚀 Quick start
 
-**Option A — one-line install (recommended, pre-ready):**
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/cyralyx/agent-stack/master/scripts/bootstrap.sh) --token sk-or-your-openrouter-key
+git clone <repo-url> agent-stack && cd agent-stack
+./setup.sh                 # provision Hermes + OpenClaw + vault + Telegram
+stack status               # verify everything is up
 ```
-Downloads the latest release, extracts, installs Hermes + OpenClaw + vault +
-config + skills + hooks. Drop in your token and it's done. Then:
-```bash
-agentstack status    # see brain / hands / memory / token
-agentstack doctor    # full health check
-```
-
-**Option B — npm app (merged CLI, OpenClaw-style):**
-```bash
-npm i -g agentstack
-agentstack install --token sk-or-...
-agentstack ask "question"        # routes to brain or hands by intent
-agentstack council "question"    # cheap council, opt-in
-```
-
-**Option C — clone + setup:**
-```bash
-git clone https://github.com/cyralyx/agent-stack && cd agent-stack
-./install.sh --token sk-or-...   # one-shot, pre-ready
-stack status                     # alias for agentstack
-```
-
-All three land the same clean system: **one command, one token, done**.
 
 ## 📡 Reach everything from Telegram
 

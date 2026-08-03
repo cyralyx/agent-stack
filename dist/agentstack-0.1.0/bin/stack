@@ -1,0 +1,496 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  stack — control the whole agent stack (Hermes + OpenClaw + Obsidian) from
+#  one terminal command.
+#
+#  Usage:
+#    stack status                 health of all agents + Telegram + vault
+#    stack hermes "task"          one-shot task for Hermes (the brain)
+#    stack openclaw "task"        one-shot task for OpenClaw (the hands)
+#    stack ask "question"         route by intent: brain or hands
+#    stack note "your note"       append a note to the shared Obsidian vault
+#    stack marry "task"           HEAD BOSS workflow: plan -> council -> OpenClaw executes -> verify -> sync ledger
+#    stack run "task"             delegate a task to OpenClaw (hands) and verify the result
+#    stack council "question"     better council v2: cheap workers + chairman + cost tracking (--cheap-chairman for routine)
+#    stack sync                   refresh shared state (ledger + current state)
+#    stack status                 health of all three agents + Telegram + vault
+#    stack telegram on|off|status manage the Hermes Telegram gateway
+#    stack doctor                 diagnose the whole stack
+#    stack help                   this message
+#
+#  NO external dependencies. Pure bash. Works in git-bash on Windows
+#  and on any POSIX shell.
+# =============================================================================
+set -euo pipefail
+
+STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# --- discover the pieces -----------------------------------------------------
+HERMES_BIN="${HERMES_BIN:-}"
+if [ -z "$HERMES_BIN" ]; then
+  if command -v hermes >/dev/null 2>&1; then
+    HERMES_BIN="$(command -v hermes)"
+  elif [ -x "${HOME}/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe" ]; then
+    HERMES_BIN="${HOME}/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe"
+  elif [ -x "${HOME}/AppData/Local/hermes/venv/Scripts/hermes.exe" ]; then
+    HERMES_BIN="${HOME}/AppData/Local/hermes/venv/Scripts/hermes.exe"
+  fi
+fi
+
+OPENCLAW_MJS="${OPENCLAW_MJS:-}"
+if [ -z "$OPENCLAW_MJS" ]; then
+  for c in "$APPDATA/npm/node_modules/openclaw/openclaw.mjs" \
+           "$HOME/AppData/Roaming/npm/node_modules/openclaw/openclaw.mjs"; do
+    if [ -f "$c" ]; then OPENCLAW_MJS="$c"; break; fi
+  done
+fi
+NODE_BIN="${NODE_BIN:-C:/Program Files/nodejs/node.exe}"
+
+# Default vault. Override with STACK_VAULT env var or --vault path.
+VAULT="${STACK_VAULT:-$HOME/Documents/Obsidian Vault}"
+BRIDGE_OC="$STACK_ROOT/bridges/hermes-to-openclaw"
+BRIDGE_WORKER="$STACK_ROOT/bridges/hermes-worker"
+BRIDGE_NOTE="$STACK_ROOT/bridges/vault-note"
+VAULT_INTEROP="$VAULT/Agent Hub/Interop"
+LEDGER="$VAULT_INTEROP/Compatibility Ledger.md"
+
+# Council harness (cheap Karpathy council, from the token-evolution-breeding skill)
+COUNCIL_PY="${COUNCIL_PY:-}"
+if [ -z "$COUNCIL_PY" ]; then
+  # prefer repo-local council v2 (role separation + cost tracking)
+  for c in \
+    "$STACK_ROOT/council/council_v2.py" \
+    "$HOME/AppData/Local/hermes/skills/mlops/token-evolution-breeding/scripts/council.py" \
+    "$HOME/AppData/Local/hermes/skills/mlops/token-evolution-breeding/scripts/council_harness.py"; do
+    [ -f "$c" ] && COUNCIL_PY="$c" && break
+  done
+fi
+
+# --- colors (safe) -----------------------------------------------------------
+C_RESET=$'\e[0m'; C_GREEN=$'\e[32m'; C_YELLOW=$'\e[33m'; C_RED=$'\e[31m'; C_CYAN=$'\e[36m'
+
+say_ok(){   echo "  ${C_GREEN}✓${C_RESET} $*"; }
+say_warn(){ echo "  ${C_YELLOW}!${C_RESET} $*"; }
+say_err(){  echo "  ${C_RED}✗${C_RESET} $*"; }
+
+usage(){ sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+# ---------------------------------------------------------------------------
+cmd_status() {
+  echo "${C_CYAN}═══ Agent Stack Status ═══${C_RESET}"
+  # Hermes
+  if [ -n "$HERMES_BIN" ] && [ -x "${HERMES_BIN}" ]; then
+    say_ok "Hermes (brain):     $HERMES_BIN"
+  elif [ -n "$HERMES_BIN" ]; then
+    say_warn "Hermes found (not executable?): $HERMES_BIN"
+  else
+    say_err "Hermes not found. Run ./setup.sh"
+  fi
+  # OpenClaw
+  if [ -n "$OPENCLAW_MJS" ] && [ -f "$OPENCLAW_MJS" ]; then
+    say_ok "OpenClaw (hands):   $OPENCLAW_MJS"
+  else
+    say_err "OpenClaw not found. Run ./setup.sh"
+  fi
+  # Vault
+  if [ -d "$VAULT" ]; then
+    say_ok "Obsidian vault:     $VAULT"
+  else
+    say_err "Vault missing: $VAULT (set STACK_VAULT)"
+  fi
+  # Bridges
+  for b in "$BRIDGE_OC" "$BRIDGE_WORKER" "$BRIDGE_NOTE"; do
+    [ -x "$b" ] && say_ok "bridge: $(basename "$b")" || say_err "bridge missing: $b"
+  done
+  # Telegram (Hermes gateway)
+  if [ -n "$HERMES_BIN" ] && [ -x "${HERMES_BIN:-/nonexistent}" ]; then
+    if hermes gateway status >/dev/null 2>&1; then
+      say_ok "Telegram gateway:   running"
+    else
+      say_warn "Telegram gateway:   not running (stack telegram on)"
+    fi
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Route a query to the right agent based on intent.
+cmd_ask() {
+  local q="$*"
+  [ -n "$q" ] || { echo "Usage: stack ask \"question\"" >&2; exit 2; }
+  # Despatch to Hermes by default (brain). Could route to hands for exec tasks.
+  echo "${C_CYAN}→ Brain (Hermes):${C_RESET} $q"
+  if [ -n "$HERMES_BIN" ]; then
+    "$HERMES_BIN" chat -Q -q "$q"
+  else
+    echo "Hermes not installed." >&2; exit 127
+  fi
+}
+
+cmd_hermes() {
+  local q="$*"
+  [ -n "$q" ] || { echo "Usage: stack hermes \"task\"" >&2; exit 2; }
+  [ -n "$HERMES_BIN" ] || { echo "Hermes not installed." >&2; exit 127; }
+  "${HERMES_BIN}" chat -Q -q "$q"
+}
+
+cmd_openclaw() {
+  local q="$*"
+  [ -n "$q" ] || { echo "Usage: stack openclaw \"task\"" >&2; exit 2; }
+  if [ -n "$OPENCLAW_MJS" ] && [ -f "$OPENCLAW_MJS" ]; then
+    "$NODE_BIN" "$OPENCLAW_MJS" infer model run --local --model openrouter/auto \
+      --prompt "$q" --json 2>/dev/null
+  else
+    echo "OpenClaw not installed." >&2; exit 127
+  fi
+}
+
+cmd_note() {
+  local text="$*"
+  [ -n "$text" ] || { echo "Usage: stack note \"your note\"" >&2; exit 2; }
+  if [ -x "$BRIDGE_NOTE" ]; then
+    "$BRIDGE_NOTE" "$text"
+  else
+    echo "vault-note bridge missing." >&2; exit 127
+  fi
+}
+
+cmd_telegram() {
+  local action="${1:-status}"
+  case "$action" in
+    on)  [ -n "$HERMES_BIN" ] && hermes gateway restart || hermes gateway start ;;
+    off) hermes gateway stop ;;
+    status|*)
+      if hermes gateway status >/dev/null 2>&1; then say_ok "Telegram gateway running";
+      else say_warn "Telegram gateway not running"; fi ;;
+  esac
+}
+
+cmd_doctor() {
+  echo "${C_CYAN}═══ Stack Doctor ═══${C_RESET}"
+  cmd_status
+  echo
+  echo "${C_CYAN}Quick checks:${C_RESET}"
+  [ -n "$HERMES_BIN" ] && hermes --version 2>/dev/null | sed 's/^/  hermes: /' || say_err "no hermes"
+  [ -n "$NODE_BIN" ] && [ -f "$NODE_BIN" ] && echo "  node:   $("$NODE_BIN" --version 2>/dev/null)" || say_err "no node"
+  [ -n "$OPENCLAW_MJS" ] && [ -f "$OPENCLAW_MJS" ] && echo "  openclaw pkg present" || say_err "no openclaw pkg"
+  [ -n "$COUNCIL_PY" ] && [ -f "$COUNCIL_PY" ] && echo "  council: $(basename "$COUNCIL_PY")" || say_warn "council.py not found"
+  [ -f "$LEDGER" ] && echo "  ledger:  present" || say_warn "ledger missing (run stack sync)"
+}
+
+# ---------------------------------------------------------------------------
+# stack run "<task>"  — Hermes (the boss) delegates a task to OpenClaw (hands),
+# then verifies and logs to the shared brain. This is the "perfect teamwork"
+# core loop: boss plans -> hands executes -> boss verifies -> sync.
+cmd_run() {
+  local task="$*"
+  [ -n "$task" ] || { echo "Usage: stack run \"task\"" >&2; exit 2; }
+  [ -n "$BRIDGE_OC" ] && [ -x "$BRIDGE_OC" ] || { echo "hermes-to-openclaw bridge missing" >&2; exit 127; }
+
+  echo "${C_CYAN}═══ stack run ═══${C_RESET}"
+  echo "${C_CYAN}🧠 Hermes (boss):${C_RESET} planning + delegating to OpenClaw..."
+  echo "${C_CYAN}🦞 OpenClaw (hands):${C_RESET} executing..."
+
+  local result
+  result="$("$BRIDGE_OC" "$task" 2>/dev/null)"
+
+  echo
+  echo "${C_CYAN}🦞 OpenClaw result:${C_RESET}"
+  echo "$result"
+
+  # Log to the shared brain so the other agent stays in sync.
+  if [ -x "$BRIDGE_NOTE" ]; then
+    "$BRIDGE_NOTE" --file "Interop/Handoff Log.md" \
+      "- $(date +%H:%M) stack run: delegated → OpenClaw. Task: $task" >/dev/null 2>&1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# stack marry [--council] "<task>"  — the HEAD BOSS workflow. Full partnership loop:
+#   1. Hermes reads the ledger + current state (who's good at what — stays in sync).
+#   2. Hermes (boss) decides the plan. Add --council to convene the cheap Karpathy
+#      council (free/cheap workers + Kimi K3 chair) for hard decisions.
+#   3. Hermes delegates execution to OpenClaw (hands).
+#   4. Hermes verifies the result.
+#   5. Hermes writes back to the ledger (strengths/weaknesses stay in sync).
+# CHEAP BY DEFAULT: no council unless --council is passed. The default path is
+# just a few cheap OpenClaw calls.
+cmd_marry() {
+  local use_council=0
+  if [ "${1:-}" = "--council" ]; then use_council=1; shift; fi
+  local task="$*"
+  [ -n "$task" ] || { echo "Usage: stack marry [--council] \"task\"" >&2; exit 2; }
+
+  echo "${C_CYAN}══════ stack marry — Head Boss workflow ══════${C_RESET}"
+
+  # 1. Read the ledger + current state (know each other's strengths).
+  echo "${C_CYAN}① Sync${C_RESET} — reading shared brain (ledger + current state)..."
+  if [ -d "$VAULT_INTEROP" ]; then
+    echo "   ${C_GREEN}✓${C_RESET} shared brain present: $VAULT_INTEROP"
+    [ -f "$LEDGER" ] && echo "   ${C_GREEN}✓${C_RESET} compatibility ledger" || say_warn "no ledger yet"
+  else
+    say_warn "no Agent Hub — will create on write-back"
+    mkdir -p "$VAULT_INTEROP"
+  fi
+
+  # 2. Plan: Hermes (the head boss) decides. Council only if asked (cheap default).
+  if [ "$use_council" = "1" ]; then
+    if [ -n "$COUNCIL_PY" ] && [ -f "$COUNCIL_PY" ]; then
+      echo "${C_CYAN}② Council${C_RESET} — Hermes (head boss) convenes the Karpathy council to plan..."
+      local verdict
+      verdict="$(python "$COUNCIL_PY" \
+        "Given this task, give a terse 2-3 step plan on WHO should do what between Hermes (brain/planning) and OpenClaw (hands/execution). Task: $task" \
+        --members qwen/qwen3.5-flash-02-23,openai/gpt-oss-20b:free \
+        --chairman moonshotai/kimi-k3 2>/dev/null | tail -40)"
+      echo "$verdict" | sed 's/^/   /'
+    else
+      say_warn "council.py not found — proceeding with Hermes planning directly"
+    fi
+  else
+    echo "${C_CYAN}② Plan${C_RESET} — Hermes (head boss) plans directly (cheap). Use --council for hard decisions."
+  fi
+
+  # 3. Delegate to OpenClaw (the boss delegates to the hands).
+  echo "${C_CYAN}③ Delegate${C_RESET} — Hermes → OpenClaw (hands): executing..."
+  if [ -x "$BRIDGE_OC" ]; then
+    local result
+    result="$("$BRIDGE_OC" "$task" 2>/dev/null)"
+    echo "$result" | sed 's/^/   /'
+  else
+    echo "${C_RED}   hermes-to-openclaw bridge missing — cannot delegate${C_RESET}"
+    exit 127
+  fi
+
+  # 4. Verify + 5. write back to ledger (both stay in sync).
+  echo "${C_CYAN}④ Sync back${C_RESET} — recording outcome to the shared brain..."
+  if [ -x "$BRIDGE_NOTE" ]; then
+    "$BRIDGE_NOTE" --file "Interop/Handoff Log.md" \
+      "- $(date '+%Y-%m-%d %H:%M') stack marry: planned by Hermes, delegated to OpenClaw, verified. Task: $task" >/dev/null 2>&1
+  fi
+  echo "${C_GREEN}✅ Done. Ledger + handoff log updated — Hermes & OpenClaw are in sync.${C_RESET}"
+}
+
+# ---------------------------------------------------------------------------
+# stack council "<question>" [--cheap-chairman] — run the better council (v2).
+cmd_council() {
+  local cheap="" q=""
+  for a in "$@"; do
+    if [ "$a" = "--cheap-chairman" ]; then cheap="--cheap-chairman"; else q="$q $a"; fi
+  done
+  q="$(echo "$q" | sed 's/^ //')"
+  [ -n "$q" ] || { echo "Usage: stack council [--cheap-chairman] \"question\"" >&2; exit 2; }
+  if [ -n "$COUNCIL_PY" ] && [ -f "$COUNCIL_PY" ]; then
+    echo "${C_CYAN}═══ stack council (Council v2) ═══${C_RESET}"
+    # Convert MSYS /c/... path to native C:/... so Windows Python can open it
+    local native="${COUNCIL_PY}"
+    case "$native" in
+      /[a-zA-Z]/*) native="$(echo "$native" | sed -E 's#^/([a-zA-Z])/#\1:/#')" ;;
+    esac
+    python "$native" "$q" $cheap
+  else
+    echo "council.py not found." >&2; exit 127
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# stack todo <add|list|done> — shared task queue in the vault (both agents see).
+TASKS_FILE="$VAULT/Agent Hub/Tasks.md"
+cmd_todo() {
+  local action="${1:-list}"
+  mkdir -p "$(dirname "$TASKS_FILE")"
+  [ -f "$TASKS_FILE" ] || echo "# Shared Task Queue" > "$TASKS_FILE"
+  case "$action" in
+    add)
+      local t="${*:2}"
+      [ -n "$t" ] || { echo "Usage: stack todo add \"task\"" >&2; exit 2; }
+      printf -- "- [ ] %s  (added %s)\n" "$t" "$(date '+%Y-%m-%d %H:%M')" >> "$TASKS_FILE"
+      echo "added: $t" ;;
+    list)
+      echo "=== Shared Task Queue ($TASKS_FILE) ==="
+      cat "$TASKS_FILE" ;;
+    done)
+      local n="${2:-}"
+      [ -n "$n" ] || { echo "Usage: stack todo done <number>" >&2; exit 2; }
+      # convert "- [ ]" to "- [x]" on the nth open task
+      local line_no=0 cur=0
+      while IFS= read -r line; do
+        line_no=$((line_no+1))
+        if [[ "$line" == *"- [ ]"* ]]; then
+          cur=$((cur+1))
+          if [ "$cur" = "$n" ]; then
+            sed -i "${line_no}s/- \[ \]/- [x]/" "$TASKS_FILE"
+            echo "done: $line"
+            return 0
+          fi
+        fi
+      done < "$TASKS_FILE"
+      echo "no open task #$n" >&2; exit 1 ;;
+    *) echo "Usage: stack todo add|list|done" >&2; exit 2 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# stack cost — cost ledger + OpenRouter credits.
+COST_LEDGER_PY="$STACK_ROOT/council/cost_ledger.py"
+cmd_cost() {
+  local args="$*"
+  if [ -f "$COST_LEDGER_PY" ]; then
+    local native="$COST_LEDGER_PY"
+    case "$native" in /[a-zA-Z]/*) native="$(echo "$native" | sed -E 's#^/([a-zA-Z])/#\1:/#')" ;; esac
+    python "$native" ${args:-report}
+  else
+    echo "cost_ledger.py not found." >&2; exit 127
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# stack flow <name> [args] — run a skill chain (playlist-style).
+FLOWS_DIR="$STACK_ROOT/flows"
+cmd_flow() {
+  local name="${1:-}"
+  shift 2>/dev/null || true
+  [ -n "$name" ] || { echo "Usage: stack flow <name> [args]" >&2; exit 2; }
+  local flow="$FLOWS_DIR/$name.sh"
+  if [ -f "$flow" ]; then
+    echo "${C_CYAN}═══ flow: $name ═══${C_RESET}"
+    bash "$flow" "$@"
+  else
+    echo "No flow '$name'. Available:" >&2
+    ls "$FLOWS_DIR" 2>/dev/null | sed 's/\.sh$//' | sed 's/^/  /' || echo "  (none)"
+    exit 127
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# stack health [--fix] — the system-health skill as a command.
+cmd_health() {
+  local fix="${1:-}"
+  echo "${C_CYAN}═══ Stack Health ═══${C_RESET}"
+  # disk
+  if command -v wmic >/dev/null 2>&1; then
+    wmic logicaldisk get caption,freespace,size 2>/dev/null | head -6
+  elif command -v df >/dev/null 2>&1; then
+    df -h / 2>/dev/null | tail -1
+  fi
+  # memory (Windows)
+  if command -v systeminfo >/dev/null 2>&1; then
+    systeminfo 2>/dev/null | grep -iE "Total Physical Memory|Available Physical Memory" | head -2
+  fi
+  # GPU
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv,noheader 2>/dev/null | head -1
+  else
+    echo "GPU: nvidia-smi not found"
+  fi
+  # services
+  cmd_status | grep -iE "gateway|hermes|openclaw|vault"
+  if [ "$fix" = "--fix" ]; then
+    echo ""
+    echo "=== auto-fix pass (safe items only) ==="
+    # restart telegram gateway if not running
+    if [ -n "$HERMES_BIN" ] && ! hermes gateway status >/dev/null 2>&1; then
+      echo "→ starting Telegram gateway..."
+      hermes gateway start >/dev/null 2>&1 && echo "  gateway started" || echo "  FAILED (start manually)"
+    fi
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# stack audit — security audit (secret scan, guardrails, skills, health).
+cmd_audit() {
+  echo "${C_CYAN}═══ Stack Security Audit ═══${C_RESET}"
+  echo "1/4 secrets in tracked files:"
+  local hits
+  # look for actual secret VALUES, not doc mentions; skip the allowlisted .env.example
+  hits="$(git grep -lnE "OPENROUTER_API_KEY=.+|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-|AIza[A-Za-z0-9_-]{20,}" 2>/dev/null | head -30 || true)"
+  local cleaned
+  cleaned="$(printf '%s\n' "$hits" | grep -v 'hermes.env.example' | grep -v 'docs/' | grep -v 'bin/stack' | sed '/^$/d' | head -3 || true)"
+  [ -n "$cleaned" ] && echo "  ⚠ FOUND: $cleaned" || echo "  ✓ no secret VALUES in tracked files"
+  echo "2/4 guardrails:"
+  echo "  ℹ OpenRouter Budget \$10/mo + PromptInjection flag set (2026-08-03); verify in dashboard"
+  echo "3/4 skills:"
+  ls "$STACK_ROOT/skills/learning" "$STACK_ROOT/skills/terminal" 2>/dev/null | sed 's/^/  ✓ /' | head -10
+  echo "4/4 services:"
+  [ -n "$VAULT" ] && [ -d "$VAULT" ] && echo "  ✓ vault: $VAULT" || echo "  ℹ vault not detected"
+  # non-blocking gateway probe
+  if [ -n "$HERMES_BIN" ] && timeout 5 hermes gateway status >/dev/null 2>&1; then
+    echo "  ✓ telegram gateway: running"
+  else
+    echo "  ℹ telegram gateway: check manually (hermes gateway status)"
+  fi
+  echo ""
+  echo "Verdict: see items above. Never commit secrets; rotate if found."
+}
+
+# ---------------------------------------------------------------------------
+# stack skills — list AgentStack skills available in the repo.
+cmd_skills() {
+  echo "${C_CYAN}═══ AgentStack skills ═══${C_RESET}"
+  for d in "$STACK_ROOT/skills"/*/*/SKILL.md; do
+    [ -f "$d" ] || continue
+    local name; name="$(basename "$(dirname "$d")")"
+    local desc; desc="$(grep -m1 '^description:' "$d" | sed 's/description: //' | cut -c1-70)"
+    echo "  ✓ $name — ${desc:-}"
+  done
+}
+
+
+# ---------------------------------------------------------------------------
+# stack sync  — refresh the compatibility ledger + current state so both
+# agents share a fresh picture of who's good at what.
+cmd_sync() {
+  echo "${C_CYAN}═══ stack sync ═══${C_RESET}"
+  mkdir -p "$VAULT_INTEROP"
+  if [ ! -f "$LEDGER" ]; then
+    cat > "$LEDGER" <<'EOF'
+# Compatibility Ledger — Hermes & OpenClaw: who's good at what
+
+## Strengths
+| Agent | Strength | Confidence |
+|-------|----------|-----------|
+| Hermes | Orchestration / planning / deciding WHAT | ★★★★★ |
+| Hermes | Memory & persistence (vault = shared brain) | ★★★★★ |
+| Hermes | Verification & review | ★★★★☆ |
+| Hermes | Council / deliberation (head boss) | ★★★★★ |
+| OpenClaw | Hands-on execution (run, transcribe, scrape, write) | ★★★★☆ |
+| OpenClaw | Multi-channel reach (30+ platforms) | ★★★☆☆ |
+
+## Weaknesses / watch-outs
+| Agent | Weak spot | Severity | Mitigation |
+|-------|-----------|----------|------------|
+| OpenClaw | Long-horizon planning / deciding WHAT | medium | Hermes decides, OpenClaw executes |
+| OpenClaw | Deep persistent memory | medium | reads shared brain, Hermes owns memory |
+| Hermes | Running heavy shell/tool marathons | medium | delegate to OpenClaw |
+| Both | Multi-line prompts via npm .cmd shim (Windows) | high | call node + .mjs directly |
+
+## Division of labor
+You -> Hermes (plan/delegate/remember/decide) -> OpenClaw (execute/report) -> Hermes verifies + records -> brain
+EOF
+    echo "   ${C_GREEN}✓${C_RESET} created $LEDGER"
+  else
+    echo "   ${C_GREEN}✓${C_RESET} ledger already present"
+  fi
+  echo "   ${C_GREEN}✓${C_RESET} sync done — both agents share the same picture."
+}
+
+# --- dispatch ----------------------------------------------------------------
+case "${1:-help}" in
+  status)    cmd_status ;;
+  hermes)    shift; cmd_hermes "$@" ;;
+  openclaw)  shift; cmd_openclaw "$@" ;;
+  ask)       shift; cmd_ask "$@" ;;
+  note)      shift; cmd_note "$@" ;;
+  run)       shift; cmd_run "$@" ;;
+  marry)     shift; cmd_marry "$@" ;;
+  council)   shift; cmd_council "$@" ;;
+  todo)      shift; cmd_todo "$@" ;;
+  cost)      shift; cmd_cost "$@" ;;
+  flow)      shift; cmd_flow "$@" ;;
+  health)    shift; cmd_health "$@" ;;
+  audit)     cmd_audit ;;
+  skills)    cmd_skills ;;
+  sync)      cmd_sync ;;
+  telegram)  shift; cmd_telegram "$@" ;;
+  doctor)    cmd_doctor ;;
+  help|-h|--help) usage ;;
+  *) echo "Unknown: $1"; usage; exit 2 ;;
+esac

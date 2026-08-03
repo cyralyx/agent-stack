@@ -1,0 +1,30 @@
+# Binaries / archives
+*.exe
+*.dll
+*.log
+*.pid
+*.pyc
+__pycache__/
+*.db
+
+# Secrets — NEVER commit
+.env
+*.env
+!.env.example
+**/.env
+config/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Obsidian / note metadata (keep notes, drop junk)
+.trash/
+*.tmp
+
+# Build / tooling
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/

@@ -10,33 +10,19 @@ model:
 
 # The stack relies on these toolsets being enabled so the agents can
 # use the terminal, files, memory, skills, delegation, and the vault.
-# NOTE: platform_toolsets is a DICT keyed by platform (Hermes >= current).
-# Each platform lists the toolsets it enables. Preserve when editing (Will's rule).
+# Preserve platform_toolsets when changing config (Will's rule).
 platform_toolsets:
-  cli:
-    - web
-    - terminal
-    - file
-    - code_execution
-    - memory
-    - skills
-    - session_search
-    - delegation
-    - cronjob
-    - todo
-    - kanban
-  telegram:
-    - web
-    - terminal
-    - file
-    - code_execution
-    - memory
-    - skills
-    - session_search
-    - delegation
-    - cronjob
-    - todo
-    - kanban
+  - web
+  - terminal
+  - file
+  - code_execution
+  - memory
+  - skills
+  - session_search
+  - delegation
+  - cronjob
+  - todo
+  - kanban
 
 agent:
   max_turns: 90

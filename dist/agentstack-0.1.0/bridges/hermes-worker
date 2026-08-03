@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  hermes-worker — OpenClaw / CLI -> cheap Hermes worker.
+#
+#  The reverse direction: any local agent (OpenClaw, Claude Code, a script)
+#  delegates a one-shot task to a cheap, headless Hermes worker. Because it
+#  uses the openrouter/gpt-4o-mini model, it stays distinct from the desktop
+#  Nous Portal session and stays cheap.
+#
+#  Usage:
+#    hermes-worker "task for Hermes"
+#    echo "task" | hermes-worker
+# =============================================================================
+set -euo pipefail
+
+if [ "$#" -gt 0 ]; then prompt="$*"; else prompt="$(cat)"; fi
+[ -n "${prompt//[[:space:]]/}" ] || { echo "Usage: hermes-worker \"task\"" >&2; exit 2; }
+
+HERMES_BIN="${HERMES_BIN:-}"
+if [ -z "$HERMES_BIN" ]; then
+  if command -v hermes >/dev/null 2>&1; then
+    HERMES_BIN="$(command -v hermes)"
+  elif [ -x "${HOME}/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe" ]; then
+    HERMES_BIN="${HOME}/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe"
+  else
+    echo "Could not find Hermes. Set HERMES_BIN." >&2; exit 127
+  fi
+fi
+
+exec "$HERMES_BIN" chat -Q -q "$prompt" --provider openrouter --model openai/gpt-4o-mini --source claude-code-bridge

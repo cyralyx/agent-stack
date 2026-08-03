@@ -14,17 +14,30 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Bash syntax check
         run: |
           bash -n bin/stack
           bash -n setup.sh
+          bash -n install.sh
+          bash -n scripts/package.sh
+          bash -n scripts/bootstrap.sh
           bash -n bridges/hermes-to-openclaw
           bash -n bridges/hermes-worker
           bash -n bridges/vault-note
           bash -n hooks/openclaw-wife-reviewer
+      - name: Node CLI syntax + tests
+        run: |
+          node --check bin/agentstack.js
+          npm test
       - name: Python syntax check
         run: |
           python -m py_compile council/council_v2.py
-      - name: Validate council runs (no network, offline smoke)
+          python -m py_compile council/cost_ledger.py
+          python -m py_compile council/vault_mcp.py
+      - name: Validate council imports (no network, offline smoke)
         run: |
           python -c "import council_v2; print('council_v2 imports OK')" || true

@@ -1,0 +1,35 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build installer package
+        run: |
+          chmod +x scripts/package.sh
+          ./scripts/package.sh "${{ github.ref_name }}"
+
+      - name: Build npm package
+        run: |
+          npm pack --dry-run 2>&1 | head -5 || true
+          npm pack 2>&1 | tail -1
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/checksums.sha256
+            *.tgz
+          generate_release_notes: true

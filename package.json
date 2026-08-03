@@ -1,0 +1,51 @@
+{
+  "name": "agentstack",
+  "version": "0.1.0",
+  "description": "One clean system: Hermes (brain) + OpenClaw (hands) + Obsidian (memory) merged into a single CLI. Install once, drop in a token, done.",
+  "license": "MIT",
+  "author": "Cyralyx",
+  "homepage": "https://github.com/cyralyx/agent-stack",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyralyx/agent-stack.git"
+  },
+  "bin": {
+    "agentstack": "bin/agentstack.js",
+    "stack": "bin/agentstack.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "install.sh",
+    "setup.sh",
+    "bridges/",
+    "council/",
+    "skills/",
+    "flows/",
+    "terminal/",
+    "hooks/",
+    "config/",
+    "docs/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "VISION.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "hermes",
+    "openclaw",
+    "obsidian",
+    "orchestrator",
+    "multi-agent",
+    "mcp",
+    "council"
+  ]
+}
