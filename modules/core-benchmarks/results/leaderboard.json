@@ -1,0 +1,48 @@
+{
+  "git_sha": "unknown",
+  "timestamp": "2026-07-30T10:38:57.841582",
+  "runs": [
+    {
+      "run_id": "r20260730-103436",
+      "timestamp": "2026-07-30T10:38:57.638205",
+      "condition": "CYRALYX-OPTIMIZED",
+      "suite": "heldout-v1",
+      "n_tasks": 20,
+      "success_rate": 95.0,
+      "avg_cost": 0.00043707500000000004,
+      "avg_latency_ms": 3628.0803203582764,
+      "avg_tokens": 341.15,
+      "avg_retries": 0.0,
+      "total_cost": 0.008741500000000001,
+      "run_time_s": 72.57231044769287
+    },
+    {
+      "run_id": "r20260730-103436",
+      "timestamp": "2026-07-30T10:38:57.637859",
+      "condition": "CYRALYX-CONCISE",
+      "suite": "heldout-v1",
+      "n_tasks": 20,
+      "success_rate": 100.0,
+      "avg_cost": 0.0006056,
+      "avg_latency_ms": 4450.513970851898,
+      "avg_tokens": 449.5,
+      "avg_retries": 0.0,
+      "total_cost": 0.012112,
+      "run_time_s": 89.02135396003723
+    },
+    {
+      "run_id": "r20260730-103436",
+      "timestamp": "2026-07-30T10:38:57.636951",
+      "condition": "RAW",
+      "suite": "heldout-v1",
+      "n_tasks": 20,
+      "success_rate": 100.0,
+      "avg_cost": 0.0005934250000000001,
+      "avg_latency_ms": 4958.113706111908,
+      "avg_tokens": 442.05,
+      "avg_retries": 0.0,
+      "total_cost": 0.0118685,
+      "run_time_s": 99.17354965209961
+    }
+  ]
+}

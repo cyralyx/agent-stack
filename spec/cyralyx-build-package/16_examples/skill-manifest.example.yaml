@@ -1,0 +1,20 @@
+id: cyralyx.github.repository-audit
+name: GitHub Repository Audit
+version: 1.0.0
+description: Audits repository structure, tests, CI, security, and documentation.
+author: Cyralyx
+license: MIT
+category: github
+triggers:
+  - audit repository
+  - inspect project
+permissions:
+  - files.read
+  - process.execute
+  - network.github
+risk_level: medium
+entrypoint: scripts/audit.py
+tests:
+  - tests/test_manifest.py
+  - tests/test_safe_execution.py
+rollback: Remove generated audit files and restore previous report from backup.

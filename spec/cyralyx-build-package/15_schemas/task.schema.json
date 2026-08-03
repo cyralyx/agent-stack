@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cyralyx Task",
+  "type": "object",
+  "required": [
+    "id",
+    "project_id",
+    "objective",
+    "state"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "objective": {
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "created",
+        "planning",
+        "awaiting_approval",
+        "queued",
+        "executing",
+        "validating",
+        "blocked",
+        "retrying",
+        "completed",
+        "failed",
+        "cancelled",
+        "paused"
+      ]
+    },
+    "budget": {
+      "type": "number"
+    },
+    "timeout_seconds": {
+      "type": "integer"
+    },
+    "allowed_tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "acceptance_tests": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "checkpoint": {
+      "type": "object"
+    }
+  }
+}

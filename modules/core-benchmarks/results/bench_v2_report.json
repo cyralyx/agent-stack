@@ -1,0 +1,39 @@
+{
+  "run_id": "v2-20260730-112532",
+  "model": "deepseek/deepseek-v4-flash",
+  "timestamp": "2026-07-30T11:32:41.656895",
+  "conditions": {
+    "A-RAW": {
+      "rate": 100.0,
+      "cost": 0.000727475,
+      "latency": 5137.341892719269,
+      "tokens": 526.75,
+      "model_calls": 1.0,
+      "failures": 0
+    },
+    "B-HERMES": {
+      "rate": 70.0,
+      "cost": 0.000760375,
+      "latency": 5271.704638004303,
+      "tokens": 565.35,
+      "model_calls": 1.0,
+      "failures": 6
+    },
+    "C-CYRALYX": {
+      "rate": 100.0,
+      "cost": 0.000606125,
+      "latency": 4844.496703147888,
+      "tokens": 453.85,
+      "model_calls": 1.0,
+      "failures": 0
+    },
+    "D-TOOL-FIRST": {
+      "rate": 100.0,
+      "cost": 0.00064835,
+      "latency": 5184.777522087097,
+      "tokens": 482.6,
+      "model_calls": 1.0,
+      "failures": 0
+    }
+  }
+}

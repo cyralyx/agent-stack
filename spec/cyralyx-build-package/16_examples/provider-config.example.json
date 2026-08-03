@@ -1,0 +1,12 @@
+{
+  "id": "openrouter-main",
+  "type": "openai-compatible",
+  "display_name": "OpenRouter",
+  "base_url": "https://openrouter.ai/api/v1",
+  "api_key_secret_ref": "secret://providers/openrouter-main",
+  "enabled": true,
+  "project_scope": [
+    "*"
+  ],
+  "budget_limit": 25
+}

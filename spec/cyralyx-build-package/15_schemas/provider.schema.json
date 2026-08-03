@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cyralyx Provider Configuration",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "display_name"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "base_url": {
+      "type": "string"
+    },
+    "api_key_secret_ref": {
+      "type": "string"
+    },
+    "custom_headers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "project_scope": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "budget_limit": {
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

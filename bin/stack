@@ -428,7 +428,8 @@ cmd_skills() {
   for d in "$STACK_ROOT/skills"/*/*/SKILL.md; do
     [ -f "$d" ] || continue
     local name; name="$(basename "$(dirname "$d")")"
-    local desc; desc="$(grep -m1 '^description:' "$d" | sed 's/description: //' | cut -c1-70)"
+    # description may be missing (merged skills use '#' titles); tolerate that
+    local desc; desc="$(grep -m1 '^description:' "$d" | sed 's/description: //' | cut -c1-70 || true)"
     echo "  ✓ $name — ${desc:-}"
   done
 }
@@ -472,6 +473,40 @@ EOF
   echo "   ${C_GREEN}✓${C_RESET} sync done — both agents share the same picture."
 }
 
+# ---------------------------------------------------------------------------
+# stack modules — list merged Cyralyx modules in the monorepo.
+cmd_modules() {
+  echo "${C_CYAN}═══ AgentStack modules ═══${C_RESET}"
+  if [ -d "$STACK_ROOT/modules" ]; then
+    for d in "$STACK_ROOT/modules"/*/; do
+      [ -d "$d" ] || continue
+      local m; m="$(basename "$d")"
+      local lic=""; [ -f "$d/LICENSE" ] && lic="MIT"
+      echo "  ✓ $m (${lic:-no-license})"
+    done
+  else
+    echo "  (no modules dir)"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# stack benchmark — run the merged cyralyx-core benchmark suite (if present).
+cmd_benchmark() {
+  echo "${C_CYAN}═══ stack benchmark ═══${C_RESET}"
+  local bdir="$STACK_ROOT/modules/core-benchmarks"
+  if [ ! -d "$bdir" ]; then
+    echo "  ${C_YELLOW}!${C_RESET} benchmarks module not present (modules/core-benchmarks)"
+    return 1
+  fi
+  local pycmd="python"
+  command -v python3 >/dev/null 2>&1 && pycmd="python3"
+  # list available benchmark entry points
+  echo "  Benchmark suite found: $bdir"
+  ls "$bdir"/*.py 2>/dev/null | sed 's|.*/||' | while read -r f; do echo "    - $f"; done
+  echo "  Run: stack benchmark <script> (e.g. python modules/core-benchmarks/bench_v2.py)"
+  return 0
+}
+
 # --- dispatch ----------------------------------------------------------------
 case "${1:-help}" in
   status)    cmd_status ;;
@@ -488,6 +523,8 @@ case "${1:-help}" in
   health)    shift; cmd_health "$@" ;;
   audit)     cmd_audit ;;
   skills)    cmd_skills ;;
+  modules)   cmd_modules ;;
+  benchmark) shift; cmd_benchmark "$@" ;;
   sync)      cmd_sync ;;
   telegram)  shift; cmd_telegram "$@" ;;
   doctor)    cmd_doctor ;;
