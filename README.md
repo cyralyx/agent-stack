@@ -50,8 +50,12 @@ Central command for the whole stack (see [`docs/CLI.md`](docs/CLI.md) for all).
 stack status                # health of all three agents + Telegram + vault
 stack hermes "task"         # one-shot task for Hermes (brain)
 stack openclaw "task"       # one-shot task for OpenClaw (hands)
+stack run "task"            # boss loop: Hermes plans -> OpenClaw executes -> verify -> sync
+stack marry "task"          # HEAD BOSS: plan -> (council) -> delegate -> verify -> sync ledger
+stack marry --council "task"# same, but convene the cheap Karpathy council to plan first
 stack ask "question"        # route by intent: vault/quick → brain/hands
 stack note "add note to brain"  # write to the shared Obsidian vault
+stack sync                  # refresh the compatibility ledger (who's good at what)
 stack telegram on/off/status  # manage the Telegram gateway (on Hermes)
 stack doctor                # diagnose the whole stack
 ```

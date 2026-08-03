@@ -9,6 +9,9 @@
 #    stack openclaw "task"        one-shot task for OpenClaw (the hands)
 #    stack ask "question"         route by intent: brain or hands
 #    stack note "your note"       append a note to the shared Obsidian vault
+#    stack marry "task"           HEAD BOSS workflow: plan -> council -> OpenClaw executes -> verify -> sync ledger
+#    stack run "task"             delegate a task to OpenClaw (hands) and verify the result
+#    stack status                 health of all three agents + Telegram + vault
 #    stack telegram on|off|status manage the Hermes Telegram gateway
 #    stack doctor                 diagnose the whole stack
 #    stack help                   this message
@@ -46,6 +49,18 @@ VAULT="${STACK_VAULT:-/c/Users/willi/Documents/Obsidian Vault}"
 BRIDGE_OC="$STACK_ROOT/bridges/hermes-to-openclaw"
 BRIDGE_WORKER="$STACK_ROOT/bridges/hermes-worker"
 BRIDGE_NOTE="$STACK_ROOT/bridges/vault-note"
+VAULT_INTEROP="$VAULT/Agent Hub/Interop"
+LEDGER="$VAULT_INTEROP/Compatibility Ledger.md"
+
+# Council harness (cheap Karpathy council, from the token-evolution-breeding skill)
+COUNCIL_PY="${COUNCIL_PY:-}"
+if [ -z "$COUNCIL_PY" ]; then
+  for c in \
+    "$HOME/AppData/Local/hermes/skills/mlops/token-evolution-breeding/scripts/council.py" \
+    "$HOME/AppData/Local/hermes/skills/mlops/token-evolution-breeding/scripts/council_harness.py"; do
+    [ -f "$c" ] && COUNCIL_PY="$c" && break
+  done
+fi
 
 # --- colors (safe) -----------------------------------------------------------
 C_RESET=$'\e[0m'; C_GREEN=$'\e[32m'; C_YELLOW=$'\e[33m'; C_RED=$'\e[31m'; C_CYAN=$'\e[36m'
@@ -154,6 +169,138 @@ cmd_doctor() {
   [ -n "$HERMES_BIN" ] && hermes --version 2>/dev/null | sed 's/^/  hermes: /' || say_err "no hermes"
   [ -n "$NODE_BIN" ] && [ -f "$NODE_BIN" ] && echo "  node:   $("$NODE_BIN" --version 2>/dev/null)" || say_err "no node"
   [ -n "$OPENCLAW_MJS" ] && [ -f "$OPENCLAW_MJS" ] && echo "  openclaw pkg present" || say_err "no openclaw pkg"
+  [ -n "$COUNCIL_PY" ] && [ -f "$COUNCIL_PY" ] && echo "  council: $(basename "$COUNCIL_PY")" || say_warn "council.py not found"
+  [ -f "$LEDGER" ] && echo "  ledger:  present" || say_warn "ledger missing (run stack sync)"
+}
+
+# ---------------------------------------------------------------------------
+# stack run "<task>"  — Hermes (the boss) delegates a task to OpenClaw (hands),
+# then verifies and logs to the shared brain. This is the "perfect teamwork"
+# core loop: boss plans -> hands executes -> boss verifies -> sync.
+cmd_run() {
+  local task="$*"
+  [ -n "$task" ] || { echo "Usage: stack run \"task\"" >&2; exit 2; }
+  [ -n "$BRIDGE_OC" ] && [ -x "$BRIDGE_OC" ] || { echo "hermes-to-openclaw bridge missing" >&2; exit 127; }
+
+  echo "${C_CYAN}═══ stack run ═══${C_RESET}"
+  echo "${C_CYAN}🧠 Hermes (boss):${C_RESET} planning + delegating to OpenClaw..."
+  echo "${C_CYAN}🦞 OpenClaw (hands):${C_RESET} executing..."
+
+  local result
+  result="$("$BRIDGE_OC" "$task" 2>/dev/null)"
+
+  echo
+  echo "${C_CYAN}🦞 OpenClaw result:${C_RESET}"
+  echo "$result"
+
+  # Log to the shared brain so the other agent stays in sync.
+  if [ -x "$BRIDGE_NOTE" ]; then
+    "$BRIDGE_NOTE" --file "Interop/Handoff Log.md" \
+      "- $(date +%H:%M) stack run: delegated → OpenClaw. Task: $task" >/dev/null 2>&1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# stack marry [--council] "<task>"  — the HEAD BOSS workflow. Full partnership loop:
+#   1. Hermes reads the ledger + current state (who's good at what — stays in sync).
+#   2. Hermes (boss) decides the plan. Add --council to convene the cheap Karpathy
+#      council (free/cheap workers + Kimi K3 chair) for hard decisions.
+#   3. Hermes delegates execution to OpenClaw (hands).
+#   4. Hermes verifies the result.
+#   5. Hermes writes back to the ledger (strengths/weaknesses stay in sync).
+# CHEAP BY DEFAULT: no council unless --council is passed. The default path is
+# just a few cheap OpenClaw calls.
+cmd_marry() {
+  local use_council=0
+  if [ "${1:-}" = "--council" ]; then use_council=1; shift; fi
+  local task="$*"
+  [ -n "$task" ] || { echo "Usage: stack marry [--council] \"task\"" >&2; exit 2; }
+
+  echo "${C_CYAN}══════ stack marry — Head Boss workflow ══════${C_RESET}"
+
+  # 1. Read the ledger + current state (know each other's strengths).
+  echo "${C_CYAN}① Sync${C_RESET} — reading shared brain (ledger + current state)..."
+  if [ -d "$VAULT_INTEROP" ]; then
+    echo "   ${C_GREEN}✓${C_RESET} shared brain present: $VAULT_INTEROP"
+    [ -f "$LEDGER" ] && echo "   ${C_GREEN}✓${C_RESET} compatibility ledger" || say_warn "no ledger yet"
+  else
+    say_warn "no Agent Hub — will create on write-back"
+    mkdir -p "$VAULT_INTEROP"
+  fi
+
+  # 2. Plan: Hermes (the head boss) decides. Council only if asked (cheap default).
+  if [ "$use_council" = "1" ]; then
+    if [ -n "$COUNCIL_PY" ] && [ -f "$COUNCIL_PY" ]; then
+      echo "${C_CYAN}② Council${C_RESET} — Hermes (head boss) convenes the Karpathy council to plan..."
+      local verdict
+      verdict="$(python "$COUNCIL_PY" \
+        "Given this task, give a terse 2-3 step plan on WHO should do what between Hermes (brain/planning) and OpenClaw (hands/execution). Task: $task" \
+        --members qwen/qwen3.5-flash-02-23,openai/gpt-oss-20b:free \
+        --chairman moonshotai/kimi-k3 2>/dev/null | tail -40)"
+      echo "$verdict" | sed 's/^/   /'
+    else
+      say_warn "council.py not found — proceeding with Hermes planning directly"
+    fi
+  else
+    echo "${C_CYAN}② Plan${C_RESET} — Hermes (head boss) plans directly (cheap). Use --council for hard decisions."
+  fi
+
+  # 3. Delegate to OpenClaw (the boss delegates to the hands).
+  echo "${C_CYAN}③ Delegate${C_RESET} — Hermes → OpenClaw (hands): executing..."
+  if [ -x "$BRIDGE_OC" ]; then
+    local result
+    result="$("$BRIDGE_OC" "$task" 2>/dev/null)"
+    echo "$result" | sed 's/^/   /'
+  else
+    echo "${C_RED}   hermes-to-openclaw bridge missing — cannot delegate${C_RESET}"
+    exit 127
+  fi
+
+  # 4. Verify + 5. write back to ledger (both stay in sync).
+  echo "${C_CYAN}④ Sync back${C_RESET} — recording outcome to the shared brain..."
+  if [ -x "$BRIDGE_NOTE" ]; then
+    "$BRIDGE_NOTE" --file "Interop/Handoff Log.md" \
+      "- $(date '+%Y-%m-%d %H:%M') stack marry: planned by Hermes, delegated to OpenClaw, verified. Task: $task" >/dev/null 2>&1
+  fi
+  echo "${C_GREEN}✅ Done. Ledger + handoff log updated — Hermes & OpenClaw are in sync.${C_RESET}"
+}
+
+# ---------------------------------------------------------------------------
+# stack sync  — refresh the compatibility ledger + current state so both
+# agents share a fresh picture of who's good at what.
+cmd_sync() {
+  echo "${C_CYAN}═══ stack sync ═══${C_RESET}"
+  mkdir -p "$VAULT_INTEROP"
+  if [ ! -f "$LEDGER" ]; then
+    cat > "$LEDGER" <<'EOF'
+# Compatibility Ledger — Hermes & OpenClaw: who's good at what
+
+## Strengths
+| Agent | Strength | Confidence |
+|-------|----------|-----------|
+| Hermes | Orchestration / planning / deciding WHAT | ★★★★★ |
+| Hermes | Memory & persistence (vault = shared brain) | ★★★★★ |
+| Hermes | Verification & review | ★★★★☆ |
+| Hermes | Council / deliberation (head boss) | ★★★★★ |
+| OpenClaw | Hands-on execution (run, transcribe, scrape, write) | ★★★★☆ |
+| OpenClaw | Multi-channel reach (30+ platforms) | ★★★☆☆ |
+
+## Weaknesses / watch-outs
+| Agent | Weak spot | Severity | Mitigation |
+|-------|-----------|----------|------------|
+| OpenClaw | Long-horizon planning / deciding WHAT | medium | Hermes decides, OpenClaw executes |
+| OpenClaw | Deep persistent memory | medium | reads shared brain, Hermes owns memory |
+| Hermes | Running heavy shell/tool marathons | medium | delegate to OpenClaw |
+| Both | Multi-line prompts via npm .cmd shim (Windows) | high | call node + .mjs directly |
+
+## Division of labor
+You -> Hermes (plan/delegate/remember/decide) -> OpenClaw (execute/report) -> Hermes verifies + records -> brain
+EOF
+    echo "   ${C_GREEN}✓${C_RESET} created $LEDGER"
+  else
+    echo "   ${C_GREEN}✓${C_RESET} ledger already present"
+  fi
+  echo "   ${C_GREEN}✓${C_RESET} sync done — both agents share the same picture."
 }
 
 # --- dispatch ----------------------------------------------------------------
@@ -163,6 +310,9 @@ case "${1:-help}" in
   openclaw)  shift; cmd_openclaw "$@" ;;
   ask)       shift; cmd_ask "$@" ;;
   note)      shift; cmd_note "$@" ;;
+  run)       shift; cmd_run "$@" ;;
+  marry)     shift; cmd_marry "$@" ;;
+  sync)      cmd_sync ;;
   telegram)  shift; cmd_telegram "$@" ;;
   doctor)    cmd_doctor ;;
   help|-h|--help) usage ;;
