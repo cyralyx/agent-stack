@@ -5,6 +5,7 @@
 *.pid
 *.pyc
 __pycache__/
+*.db
 
 # Secrets — NEVER commit
 .env
