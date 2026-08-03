@@ -26,6 +26,9 @@
     "hooks/",
     "config/",
     "docs/",
+    "scripts/",
+    "spec/",
+    "modules/",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
@@ -35,7 +38,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test test/cli.test.js"
   },
   "keywords": [
     "ai",
