@@ -1,135 +1,100 @@
-# 🤖 Agent Stack — Hermes + OpenClaw + Obsidian (Telegram-controlled)
+# 🧠 AgentStack — Hermes × OpenClaw × Obsidian
 
-A **full stack harness** that unifies three agents into one system you drive
-from the **terminal** and reach from **Telegram** (or any of 20+ messaging
-platforms).
+**One repo. Six goals. Lower cost, better quality, a smarter ecosystem.**
 
-| Agent | Role | Surface | Driven from |
-|-------|------|---------|-------------|
-| **Hermes** | 🧠 The Brain — orchestrator, memory, skills, manager | CLI + Telegram gateway | Terminal (`hermes`) & Telegram |
-| **OpenClaw** | 🦞 The Hands — executor / worker | headless CLI | Terminal (`stack run openclaw …`) |
-| **Obsidian** | 🗂️ The Shared Brain — persistent knowledge | vault on disk | Both agents read/write |
-
-Everything is **wired together** so one command from the terminal — or one
-message on Telegram — reaches the whole stack. The agents talk to each other
-through the shared Obsidian vault and through the bridge scripts.
+The AgentStack is a complete personal AI-agent ecosystem that makes your
+**Hermes (brain) + OpenClaw (hands) + Obsidian (shared brain)** work as one
+tight system — cheaper, faster, and self-improving.
 
 ---
 
-## ✨ What you get
+## 🎯 The six goals (your wish list, made real)
 
-- **One repo** that defines and provisions the whole stack on a fresh machine.
-- **`stack` CLI** — a single entry point to drive every agent from the terminal.
-- **Telegram front door** — message one bot, both agents are reachable.
-- **Shared memory** — the Obsidian vault is the persistent brain both agents
-  read and write, so nothing is lost across sessions or agents.
-- **Hermes → OpenClaw handoff** — Hermes delegating a task to OpenClaw as the
-  executor, via the bridge scripts.
-- **OpenClaw → Hermes worker** — cheap CLI Hermes worker for sub-tasks.
+### 1. 💰 Lower API cost · improved quality
+- **Cost-per-verified-success** as the north-star metric (not raw tokens).
+- Cheap workers deliberate; quality reviewer only where it matters.
+- Budget guardrails on OpenRouter (spend limits, prompt-injection flag, no-latency safety).
+- Cache discipline: keep conversations alive, avoid `/reset` churn.
 
----
+### 2. 🏛️ Better council system
+- **Council v2** — Karpathy 3-stage with role separation + **real cost tracking per verdict**:
+  - Stage 1: cheap workers (`qwen`/`gpt-oss-20b:free`) collect independent answers
+  - Stage 2: anonymous peer-ranking (kills model-prestige bias)
+  - Stage 3: chairman synthesizes (`kimi-k3` only on hard cases)
+  - Every run records: members, models, token cost, verdict, and cost-per-verified-success.
 
-## 🚀 Quick start (fresh machine)
+### 3. 🔗 Better ecosystem: Hermes ↔ OpenClaw ↔ Obsidian
+- **Hermes = the brain** (orchestrator/memory/skills), **OpenClaw = the hands** (executor),
+  **Obsidian = the shared brain** (persistent knowledge both read/write).
+- Bridges: `hermes-to-openclaw`, `hermes-worker`, `vault-note`.
+- The `stack` CLI drives all three from one terminal; Telegram reaches them all.
 
-```bash
-git clone <your-repo-url> agent-stack && cd agent-stack
-./setup.sh                # interactive: detect/install all three + Telegram
-stack status              # verify everything is up
-```
+### 4. 🖥️ Better terminal commands & skills
+- Curated **terminal-tools** skill set: fast, safe, effective commands.
+- `stack` CLI as the one command for the whole ecosystem.
 
-See [`docs/SETUP.md`](docs/SETUP.md) for the step-by-step, and
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the pieces connect.
+### 5. 🎓 Learning skills — any task + general health
+- **Per-task learning**: after any task, capture "what worked / what didn't" into a
+  task-learning log; next time the same task is faster.
+- **General health skills**: system hygiene, disk/GPU/memory watch, cleanup routines.
 
----
-
-## 🖥️ The `stack` CLI
-
-Central command for the whole stack (see [`docs/CLI.md`](docs/CLI.md) for all).
-
-```bash
-stack status                # health of all three agents + Telegram + vault
-stack hermes "task"         # one-shot task for Hermes (brain)
-stack openclaw "task"       # one-shot task for OpenClaw (hands)
-stack run "task"            # boss loop: Hermes plans -> OpenClaw executes -> verify -> sync
-stack marry "task"          # HEAD BOSS: plan -> (council) -> delegate -> verify -> sync ledger
-stack marry --council "task"# same, but convene the cheap Karpathy council to plan first
-stack ask "question"        # route by intent: vault/quick → brain/hands
-stack note "add note to brain"  # write to the shared Obsidian vault
-stack sync                  # refresh the compatibility ledger (who's good at what)
-stack telegram on/off/status  # manage the Telegram gateway (on Hermes)
-stack doctor                # diagnose the whole stack
-```
+### 6. 🚀 A nice GitHub project
+- Everything here, versioned, documented, public — ready for others to fork.
 
 ---
 
-## 📡 Reach everything from Telegram
-
-The **Hermes gateway** connects to Telegram (`@<your-bot>`). Once it's up:
-
-- **Message the bot** → goes to Hermes (the brain).
-- Ask Hermes to **delegate to OpenClaw** → Hermes hands the task to OpenClaw
-  via the bridge, OpenClaw does the work, reads/writes the vault.
-- Ask about **your vault/notes** → Hermes (or OpenClaw) answers from Obsidian.
-
----
-
-## 🧠 The shared brain (Obsidian vault)
-
-Both Hermes and OpenClaw read/write the same vault. It holds:
-- an `AGENTS.md` contract for all agents,
-- an `Agent Hub/` core: decisions, working patterns, skills registry,
-  playbooks, context snapshots, research.
-
----
-
-## 🗂️ Repo layout
+## 🏗️ Repo layout
 
 ```
 agent-stack/
-├── README.md                # ← you are here
-├── setup.sh                 # one-command full-stack provisioning
-├── install/
-│   ├── install-hermes.sh    # install/verify Hermes
-│   ├── install-openclaw.sh  # install/verify OpenClaw
-│   ├── install-vault.sh     # detect/init the Obsidian vault
-│   └── link-bridges.sh      # symlink ~/bin bridge scripts
+├── README.md              # ← you are here
+├── VISION.md              # the six-goal spec (source of truth)
 ├── bin/
-│   ├── stack                # the central CLI (bash, no deps)
-│   └── stack.cmd            # Windows cmd wrapper
+│   └── stack              # one CLI for the whole ecosystem
 ├── bridges/
-│   ├── hermes-to-openclaw   # Hermes → OpenClaw handoff script
-│   ├── hermes-worker        # OpenClaw/CLI → cheap Hermes worker
-│   └── vault-note           # append a note to the shared vault
-├── config/
-│   ├── hermes.config.yaml   # Hermes config template (no secrets)
-│   └── hermes.env.example   # secret key names (fill in your own)
+│   ├── hermes-to-openclaw # Hermes → OpenClaw handoff
+│   ├── hermes-worker      # cheap Hermes worker (reverse direction)
+│   └── vault-note         # append to the Obsidian shared brain
+├── council/
+│   └── council_v2.py      # better council: role separation + cost tracking
+├── skills/
+│   ├── learning/          # per-task + general-health learning skills
+│   ├── terminal/          # curated fast terminal commands
+│   └── ecosystem/         # Hermes↔OpenClaw↔Obsidian patterns
 ├── hooks/
-│   └── openclaw-wife-reviewer  # agent:end hook: OpenClaw reviews replies
+│   └── openclaw-wife-reviewer  # second-opinion self-check loop
+├── config/
+│   ├── hermes.config.yaml # Hermes config template (no secrets)
+│   └── hermes.env.example # env var names (fill your own)
 ├── docs/
-│   ├── SETUP.md             # step-by-step provisioning guide
-│   ├── ARCHITECTURE.md      # how the three agents connect
-│   └── CLI.md               # full stack CLI reference
-└── .gitignore
+│   ├── ARCHITECTURE.md    # how the three agents connect
+│   ├── COUNCIL.md         # the better council spec
+│   ├── LEARNING.md        # the learning-system spec
+│   ├── COST.md            # cost-optimization playbook
+│   ├── SETUP.md           # bring up the whole stack
+│   └── CLI.md             # stack CLI reference
+└── .github/
+    └── workflows/ci.yml   # validate the repo on push
 ```
 
 ---
 
-## 🔐 Security
+## 🚀 Quick start
 
-- **No secrets in this repo.** Secrets (`TOKEN`, `API_KEY`) live in each
-  agent's own env file / secret store. We only ship the **names** of the env
-  vars you need to fill in.
-- The vault's `AGENTS.md` contract forbids storing secrets in notes.
-- Telegram tokens and API keys are never committed. See
-  [`docs/SECURITY.md`](docs/SECURITY.md).
+```bash
+git clone <repo-url> agent-stack && cd agent-stack
+./setup.sh                 # provision Hermes + OpenClaw + vault + Telegram
+stack status               # verify everything is up
+```
+
+## 📡 Reach everything from Telegram
+
+The Hermes gateway connects to Telegram. Message the bot → reaches the brain;
+ask it to delegate → hands (OpenClaw) do the work; answers draw on the shared
+brain (Obsidian).
 
 ---
 
-## 🧭 Next steps / roadmap
+## 🤝 License
 
-- [ ] Push this repo to GitHub for portability
-- [ ] Wire more Telegram routes (OpenClaw as a separate bot or same-bot routing)
-- [ ] Add a `stack install` that auto-configures the gateway from prompts
-- [ ] Containerize for server (ZimaBlade) deployment
-
-See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+MIT — free to use, fork, and build on.

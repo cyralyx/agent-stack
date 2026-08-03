@@ -3,6 +3,8 @@
 *.dll
 *.log
 *.pid
+*.pyc
+__pycache__/
 
 # Secrets — NEVER commit
 .env

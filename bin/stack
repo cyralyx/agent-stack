@@ -11,6 +11,8 @@
 #    stack note "your note"       append a note to the shared Obsidian vault
 #    stack marry "task"           HEAD BOSS workflow: plan -> council -> OpenClaw executes -> verify -> sync ledger
 #    stack run "task"             delegate a task to OpenClaw (hands) and verify the result
+#    stack council "question"     better council v2: cheap workers + chairman + cost tracking (--cheap-chairman for routine)
+#    stack sync                   refresh shared state (ledger + current state)
 #    stack status                 health of all three agents + Telegram + vault
 #    stack telegram on|off|status manage the Hermes Telegram gateway
 #    stack doctor                 diagnose the whole stack
@@ -55,7 +57,9 @@ LEDGER="$VAULT_INTEROP/Compatibility Ledger.md"
 # Council harness (cheap Karpathy council, from the token-evolution-breeding skill)
 COUNCIL_PY="${COUNCIL_PY:-}"
 if [ -z "$COUNCIL_PY" ]; then
+  # prefer repo-local council v2 (role separation + cost tracking)
   for c in \
+    "$STACK_ROOT/council/council_v2.py" \
     "$HOME/AppData/Local/hermes/skills/mlops/token-evolution-breeding/scripts/council.py" \
     "$HOME/AppData/Local/hermes/skills/mlops/token-evolution-breeding/scripts/council_harness.py"; do
     [ -f "$c" ] && COUNCIL_PY="$c" && break
@@ -266,6 +270,28 @@ cmd_marry() {
 }
 
 # ---------------------------------------------------------------------------
+# stack council "<question>" [--cheap-chairman] — run the better council (v2).
+cmd_council() {
+  local cheap="" q=""
+  for a in "$@"; do
+    if [ "$a" = "--cheap-chairman" ]; then cheap="--cheap-chairman"; else q="$q $a"; fi
+  done
+  q="$(echo "$q" | sed 's/^ //')"
+  [ -n "$q" ] || { echo "Usage: stack council [--cheap-chairman] \"question\"" >&2; exit 2; }
+  if [ -n "$COUNCIL_PY" ] && [ -f "$COUNCIL_PY" ]; then
+    echo "${C_CYAN}═══ stack council (Council v2) ═══${C_RESET}"
+    # Convert MSYS /c/... path to native C:/... so Windows Python can open it
+    local native="${COUNCIL_PY}"
+    case "$native" in
+      /[a-zA-Z]/*) native="$(echo "$native" | sed -E 's#^/([a-zA-Z])/#\1:/#')" ;;
+    esac
+    python "$native" "$q" $cheap
+  else
+    echo "council.py not found." >&2; exit 127
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # stack sync  — refresh the compatibility ledger + current state so both
 # agents share a fresh picture of who's good at what.
 cmd_sync() {
@@ -312,6 +338,7 @@ case "${1:-help}" in
   note)      shift; cmd_note "$@" ;;
   run)       shift; cmd_run "$@" ;;
   marry)     shift; cmd_marry "$@" ;;
+  council)   shift; cmd_council "$@" ;;
   sync)      cmd_sync ;;
   telegram)  shift; cmd_telegram "$@" ;;
   doctor)    cmd_doctor ;;

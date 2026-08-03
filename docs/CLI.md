@@ -32,6 +32,16 @@ routing so execution-style asks go to the hands.)
 Append a note to the shared Obsidian brain (`vault-note` bridge). Writes to a
 dated daily note under `Agent Hub/Daily Notes/`.
 
+### `stack run "<task>"` / `stack marry "<task>"` / `stack sync`
+Head-boss workflows: plan → delegate to the hands (OpenClaw) → verify → write
+back to the shared brain (ledger + handoff log). `marry` is the full
+plan→execute→verify→record loop; `sync` refreshes shared state.
+
+### `stack council "<question>" [--cheap-chairman]`
+Run the **better council (v2)** — cheap workers deliberate, a chairman
+synthesizes, with real cost tracking. `--cheap-chairman` uses the 15x cheaper
+chairman for routine questions (verified ~$0.0002/run).
+
 ### `stack telegram on|off|status`
 Start / stop / check the Hermes Telegram gateway.
 
