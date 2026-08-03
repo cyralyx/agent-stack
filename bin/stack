@@ -30,10 +30,10 @@ HERMES_BIN="${HERMES_BIN:-}"
 if [ -z "$HERMES_BIN" ]; then
   if command -v hermes >/dev/null 2>&1; then
     HERMES_BIN="$(command -v hermes)"
-  elif [ -x "/c/Users/willi/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe" ]; then
-    HERMES_BIN="/c/Users/willi/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe"
-  elif [ -x "/c/Users/willi/AppData/Local/hermes/venv/Scripts/hermes.exe" ]; then
-    HERMES_BIN="/c/Users/willi/AppData/Local/hermes/venv/Scripts/hermes.exe"
+  elif [ -x "${HOME}/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe" ]; then
+    HERMES_BIN="${HOME}/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe"
+  elif [ -x "${HOME}/AppData/Local/hermes/venv/Scripts/hermes.exe" ]; then
+    HERMES_BIN="${HOME}/AppData/Local/hermes/venv/Scripts/hermes.exe"
   fi
 fi
 
@@ -47,7 +47,7 @@ fi
 NODE_BIN="${NODE_BIN:-C:/Program Files/nodejs/node.exe}"
 
 # Default vault. Override with STACK_VAULT env var or --vault path.
-VAULT="${STACK_VAULT:-/c/Users/willi/Documents/Obsidian Vault}"
+VAULT="${STACK_VAULT:-$HOME/Documents/Obsidian Vault}"
 BRIDGE_OC="$STACK_ROOT/bridges/hermes-to-openclaw"
 BRIDGE_WORKER="$STACK_ROOT/bridges/hermes-worker"
 BRIDGE_NOTE="$STACK_ROOT/bridges/vault-note"

@@ -12,7 +12,7 @@
 # =============================================================================
 set -euo pipefail
 
-VAULT="${STACK_VAULT:-/c/Users/willi/Documents/Obsidian Vault}"
+VAULT="${STACK_VAULT:-$HOME/Documents/Obsidian Vault}"
 TARGET_FILE=""
 ARGS=()
 

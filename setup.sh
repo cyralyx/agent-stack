@@ -16,7 +16,7 @@ set -euo pipefail
 
 STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_LINK_DIR="${BIN_LINK_DIR:-$HOME/bin}"
-VAULT="${STACK_VAULT:-/c/Users/willi/Documents/Obsidian Vault}"
+VAULT="${STACK_VAULT:-$HOME/Documents/Obsidian Vault}"
 HERMES_HOME="${HERMES_HOME:-$HOME/AppData/Local/hermes}"
 
 YELLOW=$'\e[33m'; GREEN=$'\e[32m'; CYAN=$'\e[36m'; RESET=$'\e[0m'
