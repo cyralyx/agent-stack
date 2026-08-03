@@ -1,0 +1,41 @@
+# =============================================================================
+#  Hermes config template — NO SECRETS. Fill in your own keys in .env.
+#  See https://hermes-agent.nousresearch.com/docs for the full reference.
+#  Copy to: $HERMES_HOME/config.yaml  (or use `hermes setup`)
+# =============================================================================
+
+model:
+  default: openrouter/auto
+  provider: openrouter
+
+# The stack relies on these toolsets being enabled so the agents can
+# use the terminal, files, memory, skills, delegation, and the vault.
+# Preserve platform_toolsets when changing config (Will's rule).
+platform_toolsets:
+  - web
+  - terminal
+  - file
+  - code_execution
+  - memory
+  - skills
+  - session_search
+  - delegation
+  - cronjob
+  - todo
+  - kanban
+
+agent:
+  max_turns: 90
+
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+
+curator:
+  enabled: true
+  consolidate: false
+
+# Messaging: fill in platform tokens in .env (e.g. TELEGRAM_BOT_TOKEN)
+gateway:
+  platforms:
+    telegram: {}

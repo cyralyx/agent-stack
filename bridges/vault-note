@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  vault-note — append a note to the shared Obsidian brain (vault).
+#
+#  Usage:
+#    vault-note "your note"              -> appends to a dated daily note
+#    vault-note --file <name> "content"  -> write to Agent Hub/<name>.md
+#    echo "note" | vault-note
+#
+#  Every agent (Hermes, OpenClaw) can use this to persist knowledge to the
+#  shared brain without touching each other's memory state.
+# =============================================================================
+set -euo pipefail
+
+VAULT="${STACK_VAULT:-/c/Users/willi/Documents/Obsidian Vault}"
+TARGET_FILE=""
+ARGS=()
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --file) TARGET_FILE="$2"; shift 2 ;;
+    --vault) VAULT="$2"; shift 2 ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+
+if [ ${#ARGS[@]} -eq 0 ]; then
+  # read from stdin
+  IFS= read -r -d '' content || true
+else
+  content="${ARGS[*]}"
+fi
+[ -n "${content//[[:space:]]/}" ] || { echo "Usage: vault-note \"note\" or --file <name> \"note\"" >&2; exit 2; }
+
+if [ ! -d "$VAULT" ]; then
+  echo "Vault not found: $VAULT (set STACK_VAULT)" >&2; exit 127
+fi
+
+if [ -n "$TARGET_FILE" ]; then
+  # write a named note under Agent Hub/ (create if needed)
+  mkdir -p "$VAULT/Agent Hub"
+  f="$VAULT/Agent Hub/$TARGET_FILE"
+  [ -f "$f" ] && printf '\n---\n' >> "$f"
+  printf '%s\n' "$content" >> "$f"
+  echo "Appended to $f"
+  exit 0
+fi
+
+# default: dated daily note under Agent Hub/Daily Notes/
+DAILY_DIR="$VAULT/Agent Hub/Daily Notes"
+mkdir -p "$DAILY_DIR"
+STAMP="$(date +%Y-%m-%d)"
+f="$DAILY_DIR/$STAMP.md"
+[ -f "$f" ] || { echo "# $STAMP" > "$f"; echo "" >> "$f"; }
+{
+  echo ""
+  echo "- $(date +%H:%M) — $content"
+} >> "$f"
+echo "Logged to $f"

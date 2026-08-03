@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  openclaw-wife-reviewer — Hermes agent:end hook.
+#  After Hermes replies, headless OpenClaw (the hands) reviews the
+#  {question, answer} pair + the shared-brain context. On DISAGREE it posts a
+#  second opinion through the Telegram bot. Gives the stack a self-check loop.
+#
+#  Wire it up: register as an agent:end hook in Hermes, or call it manually:
+#    openclaw-wife-reviewer "question" "answer"
+# =============================================================================
+set -euo pipefail
+Q="${1:-}"
+A="${2:-}"
+[ -n "$Q" ] && [ -n "$A" ] || { echo "Usage: openclaw-wife-reviewer \"Q\" \"A\"" >&2; exit 2; }
+
+BRIDGE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bridges/hermes-to-openclaw"
+VAULT="${STACK_VAULT:-/c/Users/willi/Documents/Obsidian Vault}"
+CTX=""
+if [ -f "$VAULT/Agent Hub/Interop/Current State.md" ]; then
+  CTX="$(head -200 "$VAULT/Agent Hub/Interop/Current State.md" 2>/dev/null)"
+fi
+
+PROMPT="You are OpenClaw, the hands/reviewer in the Hermes stack.
+Review this Hermes answer for correctness, safety, and quality.
+Shared-brain context:
+${CTX:-(none)}
+
+QUESTION: $Q
+ANSWER: $A
+
+Reply with EXACTLY one line: AGREE   or   DISAGREE: <one-sentence reason>"
+
+"$BRIDGE" "$PROMPT"

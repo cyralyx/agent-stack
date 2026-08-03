@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  stack — control the whole agent stack (Hermes + OpenClaw + Obsidian) from
+#  one terminal command.
+#
+#  Usage:
+#    stack status                 health of all agents + Telegram + vault
+#    stack hermes "task"          one-shot task for Hermes (the brain)
+#    stack openclaw "task"        one-shot task for OpenClaw (the hands)
+#    stack ask "question"         route by intent: brain or hands
+#    stack note "your note"       append a note to the shared Obsidian vault
+#    stack telegram on|off|status manage the Hermes Telegram gateway
+#    stack doctor                 diagnose the whole stack
+#    stack help                   this message
+#
+#  NO external dependencies. Pure bash. Works in git-bash on Windows
+#  and on any POSIX shell.
+# =============================================================================
+set -euo pipefail
+
+STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# --- discover the pieces -----------------------------------------------------
+HERMES_BIN="${HERMES_BIN:-}"
+if [ -z "$HERMES_BIN" ]; then
+  if command -v hermes >/dev/null 2>&1; then
+    HERMES_BIN="$(command -v hermes)"
+  elif [ -x "/c/Users/willi/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe" ]; then
+    HERMES_BIN="/c/Users/willi/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe"
+  elif [ -x "/c/Users/willi/AppData/Local/hermes/venv/Scripts/hermes.exe" ]; then
+    HERMES_BIN="/c/Users/willi/AppData/Local/hermes/venv/Scripts/hermes.exe"
+  fi
+fi
+
+OPENCLAW_MJS="${OPENCLAW_MJS:-}"
+if [ -z "$OPENCLAW_MJS" ]; then
+  for c in "$APPDATA/npm/node_modules/openclaw/openclaw.mjs" \
+           "$HOME/AppData/Roaming/npm/node_modules/openclaw/openclaw.mjs"; do
+    if [ -f "$c" ]; then OPENCLAW_MJS="$c"; break; fi
+  done
+fi
+NODE_BIN="${NODE_BIN:-C:/Program Files/nodejs/node.exe}"
+
+# Default vault. Override with STACK_VAULT env var or --vault path.
+VAULT="${STACK_VAULT:-/c/Users/willi/Documents/Obsidian Vault}"
+BRIDGE_OC="$STACK_ROOT/bridges/hermes-to-openclaw"
+BRIDGE_WORKER="$STACK_ROOT/bridges/hermes-worker"
+BRIDGE_NOTE="$STACK_ROOT/bridges/vault-note"
+
+# --- colors (safe) -----------------------------------------------------------
+C_RESET=$'\e[0m'; C_GREEN=$'\e[32m'; C_YELLOW=$'\e[33m'; C_RED=$'\e[31m'; C_CYAN=$'\e[36m'
+
+say_ok(){   echo "  ${C_GREEN}✓${C_RESET} $*"; }
+say_warn(){ echo "  ${C_YELLOW}!${C_RESET} $*"; }
+say_err(){  echo "  ${C_RED}✗${C_RESET} $*"; }
+
+usage(){ sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+# ---------------------------------------------------------------------------
+cmd_status() {
+  echo "${C_CYAN}═══ Agent Stack Status ═══${C_RESET}"
+  # Hermes
+  if [ -n "$HERMES_BIN" ] && [ -x "${HERMES_BIN}" ]; then
+    say_ok "Hermes (brain):     $HERMES_BIN"
+  elif [ -n "$HERMES_BIN" ]; then
+    say_warn "Hermes found (not executable?): $HERMES_BIN"
+  else
+    say_err "Hermes not found. Run ./setup.sh"
+  fi
+  # OpenClaw
+  if [ -n "$OPENCLAW_MJS" ] && [ -f "$OPENCLAW_MJS" ]; then
+    say_ok "OpenClaw (hands):   $OPENCLAW_MJS"
+  else
+    say_err "OpenClaw not found. Run ./setup.sh"
+  fi
+  # Vault
+  if [ -d "$VAULT" ]; then
+    say_ok "Obsidian vault:     $VAULT"
+  else
+    say_err "Vault missing: $VAULT (set STACK_VAULT)"
+  fi
+  # Bridges
+  for b in "$BRIDGE_OC" "$BRIDGE_WORKER" "$BRIDGE_NOTE"; do
+    [ -x "$b" ] && say_ok "bridge: $(basename "$b")" || say_err "bridge missing: $b"
+  done
+  # Telegram (Hermes gateway)
+  if [ -n "$HERMES_BIN" ] && [ -x "${HERMES_BIN:-/nonexistent}" ]; then
+    if hermes gateway status >/dev/null 2>&1; then
+      say_ok "Telegram gateway:   running"
+    else
+      say_warn "Telegram gateway:   not running (stack telegram on)"
+    fi
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Route a query to the right agent based on intent.
+cmd_ask() {
+  local q="$*"
+  [ -n "$q" ] || { echo "Usage: stack ask \"question\"" >&2; exit 2; }
+  # Despatch to Hermes by default (brain). Could route to hands for exec tasks.
+  echo "${C_CYAN}→ Brain (Hermes):${C_RESET} $q"
+  if [ -n "$HERMES_BIN" ]; then
+    "$HERMES_BIN" chat -Q -q "$q"
+  else
+    echo "Hermes not installed." >&2; exit 127
+  fi
+}
+
+cmd_hermes() {
+  local q="$*"
+  [ -n "$q" ] || { echo "Usage: stack hermes \"task\"" >&2; exit 2; }
+  [ -n "$HERMES_BIN" ] || { echo "Hermes not installed." >&2; exit 127; }
+  "${HERMES_BIN}" chat -Q -q "$q"
+}
+
+cmd_openclaw() {
+  local q="$*"
+  [ -n "$q" ] || { echo "Usage: stack openclaw \"task\"" >&2; exit 2; }
+  if [ -n "$OPENCLAW_MJS" ] && [ -f "$OPENCLAW_MJS" ]; then
+    "$NODE_BIN" "$OPENCLAW_MJS" infer model run --local --model openrouter/auto \
+      --prompt "$q" --json 2>/dev/null
+  else
+    echo "OpenClaw not installed." >&2; exit 127
+  fi
+}
+
+cmd_note() {
+  local text="$*"
+  [ -n "$text" ] || { echo "Usage: stack note \"your note\"" >&2; exit 2; }
+  if [ -x "$BRIDGE_NOTE" ]; then
+    "$BRIDGE_NOTE" "$text"
+  else
+    echo "vault-note bridge missing." >&2; exit 127
+  fi
+}
+
+cmd_telegram() {
+  local action="${1:-status}"
+  case "$action" in
+    on)  [ -n "$HERMES_BIN" ] && hermes gateway restart || hermes gateway start ;;
+    off) hermes gateway stop ;;
+    status|*)
+      if hermes gateway status >/dev/null 2>&1; then say_ok "Telegram gateway running";
+      else say_warn "Telegram gateway not running"; fi ;;
+  esac
+}
+
+cmd_doctor() {
+  echo "${C_CYAN}═══ Stack Doctor ═══${C_RESET}"
+  cmd_status
+  echo
+  echo "${C_CYAN}Quick checks:${C_RESET}"
+  [ -n "$HERMES_BIN" ] && hermes --version 2>/dev/null | sed 's/^/  hermes: /' || say_err "no hermes"
+  [ -n "$NODE_BIN" ] && [ -f "$NODE_BIN" ] && echo "  node:   $("$NODE_BIN" --version 2>/dev/null)" || say_err "no node"
+  [ -n "$OPENCLAW_MJS" ] && [ -f "$OPENCLAW_MJS" ] && echo "  openclaw pkg present" || say_err "no openclaw pkg"
+}
+
+# --- dispatch ----------------------------------------------------------------
+case "${1:-help}" in
+  status)    cmd_status ;;
+  hermes)    shift; cmd_hermes "$@" ;;
+  openclaw)  shift; cmd_openclaw "$@" ;;
+  ask)       shift; cmd_ask "$@" ;;
+  note)      shift; cmd_note "$@" ;;
+  telegram)  shift; cmd_telegram "$@" ;;
+  doctor)    cmd_doctor ;;
+  help|-h|--help) usage ;;
+  *) echo "Unknown: $1"; usage; exit 2 ;;
+esac
