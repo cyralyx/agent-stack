@@ -13,6 +13,12 @@ const HOME = os.homedir();
 const HERMES_HOME = process.env.HERMES_HOME || path.join(HOME, 'AppData', 'Local', 'hermes');
 const VAULT = process.env.STACK_VAULT || path.join(HOME, 'Documents', 'Obsidian Vault');
 
+// Repo assets location:
+//  - dev:            __dirname = .../agent-stack/app/   -> council at ../council
+//  - packaged (electron-packager): __dirname = .../resources/app/ -> council at ./council
+const hasCouncilLocal = fs.existsSync(path.join(__dirname, 'council'));
+const REPO = hasCouncilLocal ? __dirname : path.join(__dirname, '..');
+
 let mainWindow = null;
 
 // ------------------------------------------------------------ detection ----
@@ -100,8 +106,7 @@ ipcMain.handle('app:ask', async (_e, prompt) => {
   return { ok: r.code === 0, out: r.out, err: r.err };
 });
 ipcMain.handle('app:council', async (_e, prompt) => {
-  const repo = path.join(__dirname, '..');
-  const py = path.join(repo, 'council', 'council_v2.py');
+  const py = path.join(REPO, 'council', 'council_v2.py');
   if (!fs.existsSync(py)) return { ok: false, out: '', err: 'council not found' };
   const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
   const r = await runAsync(pyCmd, [py, prompt, '--cheap-chairman'], { timeout: 180000 });
