@@ -6,6 +6,7 @@
 *.pyc
 __pycache__/
 *.db
+dist/
 
 # Secrets — NEVER commit
 .env
