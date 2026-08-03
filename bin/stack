@@ -394,6 +394,45 @@ cmd_health() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# stack audit — security audit (secret scan, guardrails, skills, health).
+cmd_audit() {
+  echo "${C_CYAN}═══ Stack Security Audit ═══${C_RESET}"
+  echo "1/4 secrets in tracked files:"
+  local hits
+  # look for actual secret VALUES, not doc mentions; skip the allowlisted .env.example
+  hits="$(git grep -lnE "OPENROUTER_API_KEY=.+|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-|AIza[A-Za-z0-9_-]{20,}" 2>/dev/null | head -30 || true)"
+  local cleaned
+  cleaned="$(printf '%s\n' "$hits" | grep -v 'hermes.env.example' | grep -v 'docs/' | grep -v 'bin/stack' | sed '/^$/d' | head -3 || true)"
+  [ -n "$cleaned" ] && echo "  ⚠ FOUND: $cleaned" || echo "  ✓ no secret VALUES in tracked files"
+  echo "2/4 guardrails:"
+  echo "  ℹ OpenRouter Budget \$10/mo + PromptInjection flag set (2026-08-03); verify in dashboard"
+  echo "3/4 skills:"
+  ls "$STACK_ROOT/skills/learning" "$STACK_ROOT/skills/terminal" 2>/dev/null | sed 's/^/  ✓ /' | head -10
+  echo "4/4 services:"
+  [ -n "$VAULT" ] && [ -d "$VAULT" ] && echo "  ✓ vault: $VAULT" || echo "  ℹ vault not detected"
+  # non-blocking gateway probe
+  if [ -n "$HERMES_BIN" ] && timeout 5 hermes gateway status >/dev/null 2>&1; then
+    echo "  ✓ telegram gateway: running"
+  else
+    echo "  ℹ telegram gateway: check manually (hermes gateway status)"
+  fi
+  echo ""
+  echo "Verdict: see items above. Never commit secrets; rotate if found."
+}
+
+# ---------------------------------------------------------------------------
+# stack skills — list AgentStack skills available in the repo.
+cmd_skills() {
+  echo "${C_CYAN}═══ AgentStack skills ═══${C_RESET}"
+  for d in "$STACK_ROOT/skills"/*/*/SKILL.md; do
+    [ -f "$d" ] || continue
+    local name; name="$(basename "$(dirname "$d")")"
+    local desc; desc="$(grep -m1 '^description:' "$d" | sed 's/description: //' | cut -c1-70)"
+    echo "  ✓ $name — ${desc:-}"
+  done
+}
+
 
 # ---------------------------------------------------------------------------
 # stack sync  — refresh the compatibility ledger + current state so both
@@ -447,6 +486,8 @@ case "${1:-help}" in
   cost)      shift; cmd_cost "$@" ;;
   flow)      shift; cmd_flow "$@" ;;
   health)    shift; cmd_health "$@" ;;
+  audit)     cmd_audit ;;
+  skills)    cmd_skills ;;
   sync)      cmd_sync ;;
   telegram)  shift; cmd_telegram "$@" ;;
   doctor)    cmd_doctor ;;

@@ -61,11 +61,19 @@ agent-stack/
 │   ├── hermes-worker      # cheap Hermes worker (reverse direction)
 │   └── vault-note         # append to the Obsidian shared brain
 ├── council/
-│   └── council_v2.py      # better council: role separation + cost tracking
+│   ├── council_v2.py      # better council: role separation + cost tracking
+│   ├── cost_ledger.py     # cost-per-verified-success ledger
+│   └── vault_mcp.py       # Obsidian vault as an MCP API (read/write, no delete)
 ├── skills/
-│   ├── learning/          # per-task + general-health learning skills
-│   ├── terminal/          # curated fast terminal commands
+│   ├── learning/          # per-task + general-health + agent-memory + security + caveman-terse
+│   ├── terminal/          # curated fast terminal commands + aliases + safety linter
 │   └── ecosystem/         # Hermes↔OpenClaw↔Obsidian patterns
+├── flows/
+│   ├── research.sh        # skill-chain: research → learn → note
+│   └── health.sh          # skill-chain: health check → report to vault
+├── terminal/
+│   ├── aliases.sh         # stack aliases + macros (mkskill/quicknote/pushit)
+│   └── safety.sh          # command-safety linter (warns on rm -rf etc)
 ├── hooks/
 │   └── openclaw-wife-reviewer  # second-opinion self-check loop
 ├── config/
