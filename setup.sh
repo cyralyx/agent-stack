@@ -103,14 +103,36 @@ setup_telegram() {
   fi
 }
 
+install_skills() {
+  info "Installing AgentStack skills into Hermes"
+  local skills_root="$STACK_ROOT/skills"
+  local dst="$HERMES_HOME/skills"
+  mkdir -p "$dst"
+  local n=0
+  for sk in "$skills_root"/learning/* "$skills_root"/terminal/*; do
+    [ -d "$sk" ] || continue
+    local name; name="$(basename "$sk")"
+    local target="$dst/$name"
+    if [ -e "$target" ]; then
+      ok "skill present: $name"
+    else
+      ln -sf "$sk" "$target" 2>/dev/null || cp -r "$sk" "$target"
+      ok "skill installed: $name"
+      n=$((n+1))
+    fi
+  done
+  echo "  (linked $n new skills)"
+}
+
 # ---------------------------------------------------------------------------
 case "$ONLY" in
-  all)           install_hermes; install_openclaw; install_vault; link_bridges; setup_telegram ;;
+  all)           install_hermes; install_openclaw; install_vault; link_bridges; setup_telegram; install_skills ;;
   hermes)        install_hermes ;;
   openclaw)      install_openclaw ;;
   vault)         install_vault ;;
   bridges)       link_bridges ;;
   telegram)      setup_telegram ;;
+  skills)        install_skills ;;
   *) echo "Unknown: $ONLY"; exit 2 ;;
 esac
 

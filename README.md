@@ -2,6 +2,11 @@
 
 **One repo. Six goals. Lower cost, better quality, a smarter ecosystem.**
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/cyralyx/agent-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/cyralyx/agent-stack/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](CHANGELOG.md)
+[![Made by Cyralyx](https://img.shields.io/badge/made%20by-Cyralyx-8A2BE2.svg)](https://github.com/cyralyx)
+
 The AgentStack is a complete personal AI-agent ecosystem that makes your
 **Hermes (brain) + OpenClaw (hands) + Obsidian (shared brain)** work as one
 tight system — cheaper, faster, and self-improving.

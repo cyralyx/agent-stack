@@ -292,6 +292,110 @@ cmd_council() {
 }
 
 # ---------------------------------------------------------------------------
+# stack todo <add|list|done> — shared task queue in the vault (both agents see).
+TASKS_FILE="$VAULT/Agent Hub/Tasks.md"
+cmd_todo() {
+  local action="${1:-list}"
+  mkdir -p "$(dirname "$TASKS_FILE")"
+  [ -f "$TASKS_FILE" ] || echo "# Shared Task Queue" > "$TASKS_FILE"
+  case "$action" in
+    add)
+      local t="${*:2}"
+      [ -n "$t" ] || { echo "Usage: stack todo add \"task\"" >&2; exit 2; }
+      printf -- "- [ ] %s  (added %s)\n" "$t" "$(date '+%Y-%m-%d %H:%M')" >> "$TASKS_FILE"
+      echo "added: $t" ;;
+    list)
+      echo "=== Shared Task Queue ($TASKS_FILE) ==="
+      cat "$TASKS_FILE" ;;
+    done)
+      local n="${2:-}"
+      [ -n "$n" ] || { echo "Usage: stack todo done <number>" >&2; exit 2; }
+      # convert "- [ ]" to "- [x]" on the nth open task
+      local line_no=0 cur=0
+      while IFS= read -r line; do
+        line_no=$((line_no+1))
+        if [[ "$line" == *"- [ ]"* ]]; then
+          cur=$((cur+1))
+          if [ "$cur" = "$n" ]; then
+            sed -i "${line_no}s/- \[ \]/- [x]/" "$TASKS_FILE"
+            echo "done: $line"
+            return 0
+          fi
+        fi
+      done < "$TASKS_FILE"
+      echo "no open task #$n" >&2; exit 1 ;;
+    *) echo "Usage: stack todo add|list|done" >&2; exit 2 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# stack cost — cost ledger + OpenRouter credits.
+COST_LEDGER_PY="$STACK_ROOT/council/cost_ledger.py"
+cmd_cost() {
+  local args="$*"
+  if [ -f "$COST_LEDGER_PY" ]; then
+    local native="$COST_LEDGER_PY"
+    case "$native" in /[a-zA-Z]/*) native="$(echo "$native" | sed -E 's#^/([a-zA-Z])/#\1:/#')" ;; esac
+    python "$native" ${args:-report}
+  else
+    echo "cost_ledger.py not found." >&2; exit 127
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# stack flow <name> [args] — run a skill chain (playlist-style).
+FLOWS_DIR="$STACK_ROOT/flows"
+cmd_flow() {
+  local name="${1:-}"
+  shift 2>/dev/null || true
+  [ -n "$name" ] || { echo "Usage: stack flow <name> [args]" >&2; exit 2; }
+  local flow="$FLOWS_DIR/$name.sh"
+  if [ -f "$flow" ]; then
+    echo "${C_CYAN}═══ flow: $name ═══${C_RESET}"
+    bash "$flow" "$@"
+  else
+    echo "No flow '$name'. Available:" >&2
+    ls "$FLOWS_DIR" 2>/dev/null | sed 's/\.sh$//' | sed 's/^/  /' || echo "  (none)"
+    exit 127
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# stack health [--fix] — the system-health skill as a command.
+cmd_health() {
+  local fix="${1:-}"
+  echo "${C_CYAN}═══ Stack Health ═══${C_RESET}"
+  # disk
+  if command -v wmic >/dev/null 2>&1; then
+    wmic logicaldisk get caption,freespace,size 2>/dev/null | head -6
+  elif command -v df >/dev/null 2>&1; then
+    df -h / 2>/dev/null | tail -1
+  fi
+  # memory (Windows)
+  if command -v systeminfo >/dev/null 2>&1; then
+    systeminfo 2>/dev/null | grep -iE "Total Physical Memory|Available Physical Memory" | head -2
+  fi
+  # GPU
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv,noheader 2>/dev/null | head -1
+  else
+    echo "GPU: nvidia-smi not found"
+  fi
+  # services
+  cmd_status | grep -iE "gateway|hermes|openclaw|vault"
+  if [ "$fix" = "--fix" ]; then
+    echo ""
+    echo "=== auto-fix pass (safe items only) ==="
+    # restart telegram gateway if not running
+    if [ -n "$HERMES_BIN" ] && ! hermes gateway status >/dev/null 2>&1; then
+      echo "→ starting Telegram gateway..."
+      hermes gateway start >/dev/null 2>&1 && echo "  gateway started" || echo "  FAILED (start manually)"
+    fi
+  fi
+}
+
+
+# ---------------------------------------------------------------------------
 # stack sync  — refresh the compatibility ledger + current state so both
 # agents share a fresh picture of who's good at what.
 cmd_sync() {
@@ -339,6 +443,10 @@ case "${1:-help}" in
   run)       shift; cmd_run "$@" ;;
   marry)     shift; cmd_marry "$@" ;;
   council)   shift; cmd_council "$@" ;;
+  todo)      shift; cmd_todo "$@" ;;
+  cost)      shift; cmd_cost "$@" ;;
+  flow)      shift; cmd_flow "$@" ;;
+  health)    shift; cmd_health "$@" ;;
   sync)      cmd_sync ;;
   telegram)  shift; cmd_telegram "$@" ;;
   doctor)    cmd_doctor ;;
