@@ -36,6 +36,7 @@ const tasks = require(path.join(REPO_ROOT, 'lib', 'tasks'));
 const permissions = require(path.join(REPO_ROOT, 'lib', 'permissions'));
 const compat = require(path.join(REPO_ROOT, 'lib', 'compatibility'));
 const registry = require(path.join(REPO_ROOT, 'lib', 'providers', 'registry'));
+const routing = require(path.join(REPO_ROOT, 'lib', 'routing'));
 
 const HERMES_HOME = paths.hermesHome();
 const VAULT = process.env.STACK_VAULT || paths.defaultWorkspace();
@@ -212,15 +213,30 @@ const cmds = {
 
   // ---- ask: route by intent (brain or hands) --------------------------------
   ask(args) {
-    const q = args.join(' ');
-    if (!q) { err('Usage: agentstack ask "question"'); return 2; }
+    // parse flags: --agent hermes|openclaw, --explain-route (stripped from the question)
+    let agent = null;
+    let explain = false;
+    const qParts = [];
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '--agent') { agent = args[i + 1]; i++; }
+      else if (args[i] === '--explain-route') { explain = true; }
+      else qParts.push(args[i]);
+    }
+    const q = qParts.join(' ');
+    if (!q) { err('Usage: agentstack ask [--agent hermes|openclaw] [--explain-route] "question"'); return 2; }
     const envf = path.join(HERMES_HOME, '.env');
     const hasToken = fs.existsSync(envf) && fs.readFileSync(envf, 'utf8').includes('OPENROUTER_API_KEY=');
-    if (!hasToken) { err('No OPENROUTER_API_KEY. Run: agentstack install --token sk-or-...'); return 1; }
-    // simple intent routing: hands for "do X", brain otherwise
-    const doVerbs = /^(create|make|build|write|fix|install|run|start|stop|deploy|scan|gather|list|remove|delete|organize|sort|merge|push|commit|test)\b/i;
-    const toHands = doVerbs.test(q) && !!detectOpenClaw();
-    info(toHands ? 'routing to OpenClaw (hands)...' : 'routing to Hermes (brain)...');
+    if (!hasToken) {
+      err('No provider key configured. Run: agentstack provider add openrouter (or set OPENROUTER_API_KEY in .env)');
+      return 1;
+    }
+    // P1: layered routing
+    const route = routing.route(q, { agent });
+    if (explain) {
+      console.log(JSON.stringify({ selected_target: route.selected_target, reason: route.reason, confidence: route.confidence, alternatives: route.alternatives, required_permissions: route.required_permissions }, null, 2));
+    }
+    const toHands = route.selected_target === 'openclaw' && !!detectOpenClaw();
+    info(toHands ? `routing to OpenClaw (hands): ${route.reason}` : `routing to Hermes (brain): ${route.reason}`);
     const b = toHands ? 'bridges/hermes-to-openclaw' : 'bridges/hermes-worker';
     const bridge = path.join(REPO_ROOT, b);
     // Convert to POSIX path for bash (MSYS) — critical on Windows with spaces.
