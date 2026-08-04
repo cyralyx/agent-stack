@@ -1,134 +1,114 @@
-# 🧠 AgentStack — Hermes × OpenClaw × Obsidian
+# 🧠 AgentStack
 
-**One repo. Six goals. Lower cost, better quality, a smarter ecosystem.**
+> **A secure compatibility and orchestration layer connecting Hermes, OpenClaw,
+> Markdown knowledge workspaces, model provider APIs, councils, skills, and the
+> wider Cyralyx platform.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/cyralyx/agent-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/cyralyx/agent-stack/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.0-orange.svg)](CHANGELOG.md)
 [![Made by Cyralyx](https://img.shields.io/badge/made%20by-Cyralyx-8A2BE2.svg)](https://github.com/cyralyx)
 
-The AgentStack is a complete personal AI-agent ecosystem that makes your
-**Hermes (brain) + OpenClaw (hands) + Obsidian (shared brain)** work as one
-tight system — cheaper, faster, and self-improving.
+AgentStack is **not** a single merged runtime for Hermes, OpenClaw, and Obsidian.
+It is the **integration layer** that connects them: it detects compatible
+external systems, safe routes work between agents, stores tasks durably,
+configures model providers, tracks cost and verified outcomes, checks
+compatibility and health, and produces structured events for a future Cyralyx
+UI.
+
+The future **Cyralyx desktop application** will provide the graphical
+projects, UI, memory management, themes, and knowledge graphs. AgentStack is
+the reliable backend Cyralyx calls.
 
 ---
 
-## 🎯 The six goals (your wish list, made real)
+## 📦 Implemented now (code + tests)
 
-### 1. 💰 Lower API cost · improved quality
-- **Cost-per-verified-success** as the north-star metric (not raw tokens).
-- Cheap workers deliberate; quality reviewer only where it matters.
-- Budget guardrails on OpenRouter (spend limits, prompt-injection flag, no-latency safety).
-- Cache discipline: keep conversations alive, avoid `/reset` churn.
+These features have working implementation and passing tests
+(`test/cli.test.js`, `test/lib.test.js`):
 
-### 2. 🏛️ Better council system
-- **Council v2** — Karpathy 3-stage with role separation + **real cost tracking per verdict**:
-  - Stage 1: cheap workers (`qwen`/`gpt-oss-20b:free`) collect independent answers
-  - Stage 2: anonymous peer-ranking (kills model-prestige bias)
-  - Stage 3: chairman synthesizes (`kimi-k3` only on hard cases)
-  - Every run records: members, models, token cost, verdict, and cost-per-verified-success.
+| Feature | Implementation | Tests |
+|---------|----------------|-------|
+| CLI `agentstack` / alias `stack` | `bin/agentstack.js` | `test/cli.test.js` |
+| Secure secret storage (encrypted fallback, ref-based provider config) | `lib/secrets.js` | `test/lib.test.js` |
+| Provider registry + adapters (13+ providers, OpenAI-compatible core) | `lib/providers/` | `test/lib.test.js` |
+| Durable UUID task storage + Markdown export view | `lib/tasks.js` | `test/lib.test.js` |
+| Task migration from legacy `Tasks.md` (backup + dedupe) | `lib/tasks.js` | `test/lib.test.js` |
+| Permission gates (default deny/ask, 6 modes) | `lib/permissions.js` | `test/lib.test.js` |
+| Platform-aware paths (Win/macOS/Linux) | `lib/paths.js`, `lib/platform.js` | `test/lib.test.js` |
+| Compatibility registry + checks | `lib/compatibility.js` | `test/lib.test.js` |
+| Council v2.1 + cost ledger | `council/council_v2.py`, `council/cost_ledger.py` | import-compile; outputs |
+| Provider error taxonomy | `lib/providers/errors.js` | `test/lib.test.js` |
 
-### 3. 🔗 Better ecosystem: Hermes ↔ OpenClaw ↔ Obsidian
-- **Hermes = the brain** (orchestrator/memory/skills), **OpenClaw = the hands** (executor),
-  **Obsidian = the shared brain** (persistent knowledge both read/write).
-- Bridges: `hermes-to-openclaw`, `hermes-worker`, `vault-note`.
-- The `stack` CLI drives all three from one terminal; Telegram reaches them all.
+**Supported platforms:** Windows, Linux (CI matrix), macOS (paths handled;
+not CI-tested).
 
-### 4. 🖥️ Better terminal commands & skills
-- Curated **terminal-tools** skill set: fast, safe, effective commands.
-- `stack` CLI as the one command for the whole ecosystem.
+## 🧪 Experimental
 
-### 5. 🎓 Learning skills — any task + general health
-- **Per-task learning**: after any task, capture "what worked / what didn't" into a
-  task-learning log; next time the same task is faster.
-- **General health skills**: system hygiene, disk/GPU/memory watch, cleanup routines.
+Features that work only in restricted conditions:
 
-### 6. 🚀 A nice GitHub project
-- Everything here, versioned, documented, public — ready for others to fork.
+- **`--token` on `install`** — **deprecated** (CLI secrets leak to history/
+  process/logs). Kept only for backwards compatibility; will be removed in
+  `v0.3.0`. Use `agentstack provider add <provider>` (hidden input).
+- **`agentstack api serve`** — planned local IPC; not yet shipped.
+- **Provider live connection tests** — run behind
+  `AGENTSTACK_LIVE_PROVIDER_TESTS=1` (no real paid calls in CI).
 
----
+## 🗺️ Planned
 
-## 🏗️ Repo layout
+- Local API / IPC service + structured event stream for the Cyralyx UI.
+- Anthropic + Gemini adapter specialisations (currently OpenAI-compatible core).
+- Layered intent routing (explicit → rules → capability → model → fallback).
+- Bundled task SQLite backend (currently durable JSON).
 
-```
-agent-stack/
-├── README.md              # ← you are here
-├── VISION.md              # the six-goal spec (source of truth)
-├── bin/
-│   └── stack              # one CLI for the whole ecosystem
-├── bridges/
-│   ├── hermes-to-openclaw # Hermes → OpenClaw handoff
-│   ├── hermes-worker      # cheap Hermes worker (reverse direction)
-│   └── vault-note         # append to the Obsidian shared brain
-├── council/
-│   ├── council_v2.py      # better council: role separation + cost tracking
-│   ├── cost_ledger.py     # cost-per-verified-success ledger
-│   └── vault_mcp.py       # Obsidian vault as an MCP API (read/write, no delete)
-├── skills/
-│   ├── learning/          # per-task + general-health + agent-memory + security + caveman-terse
-│   ├── terminal/          # curated fast terminal commands + aliases + safety linter
-│   └── ecosystem/         # Hermes↔OpenClaw↔Obsidian patterns
-├── flows/
-│   ├── research.sh        # skill-chain: research → learn → note
-│   └── health.sh          # skill-chain: health check → report to vault
-├── terminal/
-│   ├── aliases.sh         # stack aliases + macros (mkskill/quicknote/pushit)
-│   └── safety.sh          # command-safety linter (warns on rm -rf etc)
-├── hooks/
-│   └── openclaw-wife-reviewer  # second-opinion self-check loop
-├── config/
-│   ├── hermes.config.yaml # Hermes config template (no secrets)
-│   └── hermes.env.example # env var names (fill your own)
-├── docs/
-│   ├── ARCHITECTURE.md    # how the three agents connect
-│   ├── COUNCIL.md         # the better council spec
-│   ├── LEARNING.md        # the learning-system spec
-│   ├── COST.md            # cost-optimization playbook
-│   ├── SETUP.md           # bring up the whole stack
-│   └── CLI.md             # stack CLI reference
-└── .github/
-    └── workflows/ci.yml   # validate the repo on push
-```
+## 🔌 External dependencies
+
+Provided by external services — AgentStack connects to them, does not replace them:
+
+- **Hermes** — the reasoning/brain agent. Version-checked via `compatibility`.
+- **OpenClaw** — the hands/execution agent. Version-checked; permission-gated.
+- **Obsidian / Markdown workspace** — the shared memory. Not mandatory; any
+  Markdown folder can be used (`STACK_VAULT`).
+- **OpenRouter / OpenAI / Anthropic / Gemini / etc.** — model providers.
+- **Telegram** — optional gateway channel.
 
 ---
 
-## 🚀 Quick start — one clean system
+## 🚀 Install
 
-**Option A — one-line install (recommended, pre-ready):**
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/cyralyx/agent-stack/master/scripts/bootstrap.sh) --token sk-or-your-openrouter-key
-```
-Downloads the latest release, extracts, installs Hermes + OpenClaw + vault +
-config + skills + hooks. Drop in your token and it's done. Then:
-```bash
-agentstack status    # see brain / hands / memory / token
-agentstack doctor    # full health check
-```
-
-**Option B — npm app (merged CLI, OpenClaw-style):**
-```bash
+# Recommended — secure provider setup (hidden input, no CLI secret):
 npm i -g agentstack
-agentstack install --token sk-or-...
-agentstack ask "question"        # routes to brain or hands by intent
-agentstack council "question"    # cheap council, opt-in
+agentstack setup                 # guided, non-destructive
+agentstack provider add openrouter   # enter key hidden
+agentstack status                 # verify
+
+# Detect-only (never changes the system):
+agentstack doctor --json
 ```
 
-**Option C — clone + setup:**
-```bash
-git clone https://github.com/cyralyx/agent-stack && cd agent-stack
-./install.sh --token sk-or-...   # one-shot, pre-ready
-stack status                     # alias for agentstack
+## 🛠️ Commands
+
+```
+agentstack provider list|add|test|remove|disable <name>
+agentstack secrets doctor
+agentstack compatibility [check|report]
+agentstack task add|list|show|complete|reopen|remove|export|sync|migrate
+agentstack permissions list|set|reset|audit
+agentstack doctor | status | ask | council | note | todo | cost | skills | audit | telegram
 ```
 
-All three land the same clean system: **one command, one token, done**.
+`todo` is a **compatibility alias** for `task` (kept for backwards compat).
 
-## 📡 Reach everything from Telegram
+## 🔒 Security
 
-The Hermes gateway connects to Telegram. Message the bot → reaches the brain;
-ask it to delegate → hands (OpenClaw) do the work; answers draw on the shared
-brain (Obsidian).
-
----
+- Secrets are stored via an **encrypted local file** (AES-256-GCM) with a
+  machine-local key, referenced by `keychain://agentstack/<provider>` in config
+  — never plaintext in config.
+- `provider add` uses **hidden interactive input**; `--token` CLI flag is
+  deprecated.
+- Permissions default to **deny/ask** for execution agents — nothing runs
+  without approval.
+- See `docs/security/` for the threat model and credential guide.
 
 ## 🤝 License
 

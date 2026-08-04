@@ -1,7 +1,7 @@
 {
   "name": "agentstack",
-  "version": "0.1.0",
-  "description": "One clean system: Hermes (brain) + OpenClaw (hands) + Obsidian (memory) merged into a single CLI. Install once, drop in a token, done.",
+  "version": "0.2.0",
+  "description": "AgentStack is a secure compatibility and orchestration layer connecting Hermes, OpenClaw, Markdown knowledge workspaces, model provider APIs, councils, skills, and the wider Cyralyx platform.",
   "license": "MIT",
   "author": "Cyralyx",
   "homepage": "https://github.com/cyralyx/agent-stack",

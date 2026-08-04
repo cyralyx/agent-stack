@@ -1,22 +1,30 @@
 # AgentStack VISION — cheaper, better, self-improving
 
 **One personal-AI ecosystem: Hermes (brain) × OpenClaw (hands) × Obsidian
-(shared brain).** This is the full vision with the expanded wish list —
-every item is either built, building, or on the roadmap.
+(shared brain), connected through AgentStack as a compatibility and
+orchestration layer.** AgentStack is NOT a single merged runtime — it connects
+the three external systems, plus model providers, councils, skills, and the
+wider Cyralyx platform. This is the full vision with the expanded wish list.
+
+**Evidence rule:** features are marked **implemented** only when they have code
++ tests + a reproducible run. Cost figures are only quoted when the methodology
+is documented (see `docs/council/COST_METHODOLOGY.md`). Untested ambitions live
+under "Roadmap".
 
 ---
 
 ## The six pillars + expanded wishes
 
 ### 1. 💰 Lower API cost · improved quality
-**Built:**
-- ✅ Council v2.1 — cheap workers, cost tracking per verdict (~$0.0002/run)
-- ✅ Cost ledger + `stack cost` — real cost-per-verified-success
-- ✅ OpenRouter guardrails: $10/mo budget, prompt-injection flag
-- ✅ Cache discipline playbook (docs/COST.md)
+**Implemented:**
+- ✅ Council v2.1 — cheap workers, per-verdict cost tracking (methodology in `docs/council/COST_METHODOLOGY.md`)
+- ✅ Cost ledger + `stack cost` — cost-per-verified-success ledger (`council/cost_ledger.py`)
 
-**Similar wishes (roadmap):**
-- [ ] Sub-$0.001 default for 90% of questions
+**Experimental / conditionally verified:**
+- ⚠️ Sub-$0.001 council runs — only with `--cheap-chairman`; not a default guarantee
+- ⚠️ OpenRouter guardrails ($10/mo budget, prompt-injection flag) — configured in the OpenRouter dashboard, NOT verified via AgentStack API; user must confirm
+
+**Roadmap:**
 - [ ] Free-tier-first routing (`gpt-oss-20b:free` before any paid)
 - [ ] Auto-throttle: if cost-per-verified-success exceeds budget, drop model tier
 - [ ] Cache-hit dashboard (weekly %, goal ≥85%)
