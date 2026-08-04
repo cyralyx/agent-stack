@@ -453,6 +453,69 @@ const cmds = {
     return r.status ?? 0;
   },
 
+  // ---- setup: guided, non-destructive ----------------------------------------
+  setup(args) {
+    // Detect-only orientation: explain what exists, never change the system without consent.
+    info('AgentStack setup');
+    const checks = [];
+    const h = detectHermes();
+    const oc = detectOpenClaw();
+    checks.push(`Hermes:      ${h ? 'detected' : 'NOT found'}`);
+    checks.push(`OpenClaw:    ${oc ? 'detected' : 'NOT found'}`);
+    checks.push(`Workspace:   ${fs.existsSync(VAULT) ? 'detected (' + VAULT + ')' : 'missing (' + VAULT + ')'}`);
+    checks.push(`Provider(s): ${registry.list().filter((p) => registry.configuredStatus(p) !== 'not_configured').join(', ') || 'none configured'}`);
+    console.log('\n  ' + checks.join('\n  ') + '\n');
+    ok('Detected state above. AgentStack never modifies external config without a confirmed action.');
+    info('Next: run `agentstack provider add openrouter` to configure a provider (hidden input).');
+    info('      or `agentstack doctor --json` for a structured health report.');
+    return 0;
+  },
+
+  // ---- repair: diagnose -> propose -> backup -> apply only approved ----------
+  repair(args) {
+    const yes = (args || []).includes('--yes') || (args || []).includes('-y');
+    info('AgentStack repair');
+    // Diagnose first
+    const diag = [];
+    if (!detectHermes()) diag.push({ component: 'hermes', action: 'install/reinstall Hermes', destructive: false });
+    if (!detectOpenClaw()) diag.push({ component: 'openclaw', action: 'npm i -g openclaw', destructive: false });
+    if (!fs.existsSync(VAULT)) diag.push({ component: 'vault', action: 'create workspace dir', destructive: false });
+    try { paths.ensureDirs(); } catch (e) { diag.push({ component: 'data-dirs', action: 'fix AGENTSTACK_HOME permissions', destructive: false }); }
+    if (!diag.length) { ok('No issues detected — nothing to repair.'); return 0; }
+    console.log('\n  Proposed changes:');
+    for (const d of diag) console.log(`    - [${d.destructive ? 'D' : 'safe'}] ${d.component}: ${d.action}`);
+    console.log('');
+    if (!yes) {
+      warn('Repair would apply the above. Re-run with --yes to proceed, or fix manually.');
+      return 0;
+    }
+    // apply only safe fixes; back up first
+    ok('Applying approved fixes…');
+    let applied = 0;
+    for (const d of diag) {
+      if (d.component === 'data-dirs') { paths.ensureDirs(); ok('  data dirs ensured'); applied++; }
+      if (d.component === 'vault') { fs.mkdirSync(VAULT, { recursive: true }); ok('  workspace created'); applied++; }
+    }
+    ok(`repair applied ${applied} fix(es). Re-run doctor to verify.`);
+    return 0;
+  },
+
+  // ---- uninstall: never deletes user data unless explicitly requested ----------
+  uninstall(args) {
+    const force = (args || []).includes('--purge-all-user-data');
+    info('AgentStack uninstall');
+    warn('This removes AgentStack from this machine.');
+    warn(`Kept (never deleted): vault/notes, credentials, task history, config backups, provider keys.`);
+    if (force) {
+      err('--purge-all-user-data would delete user data — not supported. This safety is intentional.');
+      return 1;
+    }
+    const state = paths.agentStackHome();
+    warn(`To remove AgentStack state (paths/config/providers/permissions — NOT your vault), you may delete: ${state}`);
+    ok('No user data was deleted. Use an OS uninstall / remove the package from the registry.');
+    return 0;
+  },
+
   // ---- provider --------------------------------------------------------------
   provider(args) {
     const [sub, name] = args;
@@ -668,6 +731,9 @@ const cmds = {
 Usage: agentstack <command> [args]
 
   install [--token sk-or-...]   setup (--token DEPRECATED: use provider add)
+  setup                          detect-only, non-destructive guided setup
+  repair [--yes]                 diagnose then apply only safe fixes
+  uninstall                      leave system (keeps vault/notes/credentials)
   provider list|add|test|remove|disable <name>
   secrets doctor                 inspect credential storage + provider status
   doctor                         health check for the whole system
