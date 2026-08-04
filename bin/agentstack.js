@@ -27,8 +27,18 @@ const path = require('path');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const HOME = os.homedir();
-const HERMES_HOME = process.env.HERMES_HOME || path.join(HOME, 'AppData', 'Local', 'hermes');
-const VAULT = process.env.STACK_VAULT || path.join(HOME, 'Documents', 'Obsidian Vault');
+
+// AgentStack lib modules
+const paths = require(path.join(REPO_ROOT, 'lib', 'paths'));
+const platform = require(path.join(REPO_ROOT, 'lib', 'platform'));
+const secrets = require(path.join(REPO_ROOT, 'lib', 'secrets'));
+const tasks = require(path.join(REPO_ROOT, 'lib', 'tasks'));
+const permissions = require(path.join(REPO_ROOT, 'lib', 'permissions'));
+const compat = require(path.join(REPO_ROOT, 'lib', 'compatibility'));
+const registry = require(path.join(REPO_ROOT, 'lib', 'providers', 'registry'));
+
+const HERMES_HOME = paths.hermesHome();
+const VAULT = process.env.STACK_VAULT || paths.defaultWorkspace();
 const BIN_DIR = path.join(HOME, 'bin');
 
 const C = { reset: '\x1b[0m', cyan: '\x1b[36m', green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m' };
@@ -54,7 +64,14 @@ const cmds = {
   // ---- install: first-run, pre-ready ---------------------------------------
   install(args) {
     const tokenArg = args.find((a) => a === '--token') ? args[args.indexOf('--token') + 1] : '';
-    info('AgentStack — one clean system install');
+    if (tokenArg) {
+      // P0: CLI secrets are insecure (shell history, process list). Deprecated.
+      warn('WARNING: --token on the command line is DEPRECATED and insecure.');
+      warn('The token may appear in shell history, process listings, and logs.');
+      warn('Recommended: run `agentstack provider add openrouter` for hidden input.');
+      warn('The --token flag will be removed in v0.3.0.');
+    }
+    info('AgentStack — compatibility & orchestration layer install');
     info('1/8 Hermes (brain)');
     const h = detectHermes();
     if (h) ok(`Hermes detected (${h})`);
@@ -335,19 +352,232 @@ const cmds = {
     return r.status ?? 0;
   },
 
+  // ---- provider --------------------------------------------------------------
+  provider(args) {
+    const [sub, name] = args;
+    if (!sub) { err('Usage: agentstack provider list|add|test|remove|disable <provider>'); return 2; }
+    if (sub === 'list') {
+      info('Providers');
+      const cfg = secrets.loadProviderConfig();
+      for (const p of registry.list()) {
+        const status = registry.configuredStatus(p);
+        const mark = status === 'valid' ? '✓' : (status === 'not_configured' ? '·' : '!');
+        const extra = (cfg.providers && cfg.providers[p] && cfg.providers[p].enabled === false) ? ' (disabled)' : '';
+        console.log(`  ${mark} ${p} — ${status}${extra}`);
+      }
+      return 0;
+    }
+    if (!name) { err('Usage: agentstack provider ' + sub + ' <provider>'); return 2; }
+    if (sub === 'add') {
+      // secure hidden input
+      warn('Enter the API key for ' + name + ' (input hidden):');
+      return secrets.promptHidden('API key: ').then(async (key) => {
+        const v = secrets.validateKey(key);
+        if (!v.valid) { err(`Invalid key: ${v.reason}`); return 1; }
+        secrets.setSecret(name, key);
+        const cfgEntry = secrets.addProvider(name);
+        info(`Provider ${name} configured (secret_ref=${cfgEntry.secret_ref})`);
+        // connection test
+        info('Testing connection…');
+        try {
+          const adapter = registry.getAdapter(name);
+          const result = await adapter.test();
+          console.log(`  ${result.status === 'valid' ? '✓' : '!'} ${result.message}`);
+          if (result.status === 'valid') {
+            const cfg = secrets.loadProviderConfig();
+            if (!cfg.providers) cfg.providers = {};
+            cfg.providers[name].status = 'valid';
+            secrets.saveProviderConfig(cfg);
+          }
+          return result.status === 'valid' ? 0 : 1;
+        } catch (e) {
+          err(`test failed: ${e.message}`);
+          return 1;
+        }
+      });
+    }
+    if (sub === 'test') {
+      return (async () => {
+        try {
+          const adapter = registry.getAdapter(name);
+          const result = await adapter.test();
+          console.log(`  ${result.status === 'valid' ? '✓' : '!'} ${name}: ${result.message}`);
+          const cfg = secrets.loadProviderConfig();
+          if (cfg.providers && cfg.providers[name]) {
+            cfg.providers[name].status = result.status;
+            secrets.saveProviderConfig(cfg);
+          }
+          return result.status === 'valid' ? 0 : 1;
+        } catch (e) {
+          err(`${name} test failed: ${e.message}`);
+          return 1;
+        }
+      })();
+    }
+    if (sub === 'remove') {
+      secrets.removeSecret(name);
+      const cfg = secrets.loadProviderConfig();
+      if (cfg.providers && cfg.providers[name]) delete cfg.providers[name];
+      secrets.saveProviderConfig(cfg);
+      ok(`Provider ${name} removed (secret + config)`);
+      return 0;
+    }
+    if (sub === 'disable') {
+      const cfg = secrets.loadProviderConfig();
+      if (!cfg.providers) cfg.providers = {};
+      if (!cfg.providers[name]) cfg.providers[name] = { enabled: true };
+      cfg.providers[name].enabled = false;
+      secrets.saveProviderConfig(cfg);
+      ok(`Provider ${name} disabled`);
+      return 0;
+    }
+    err('Usage: agentstack provider list|add|test|remove|disable <provider>');
+    return 2;
+  },
+
+  // ---- secrets --------------------------------------------------------------
+  secrets(args) {
+    const [sub] = args;
+    if (sub === 'doctor') {
+      const backend = secrets.systemStoreAvailable();
+      info('Secrets doctor');
+      console.log(`  Credential backend: ${backend}`);
+      const cfg = secrets.loadProviderConfig();
+      const names = registry.list();
+      for (const n of names) {
+        const hasKey = !!secrets.getSecret(n);
+        const status = registry.configuredStatus(n);
+        console.log(`  ${hasKey ? '✓' : '·'} ${n}: ${status}${hasKey ? ' (key stored, not validated)' : ''}`);
+      }
+      return 0;
+    }
+    err('Usage: agentstack secrets doctor');
+    return 2;
+  },
+
+  // ---- task (structured storage) ----------------------------------------------
+  task(args) {
+    const [sub, ...rest] = args;
+    if (!sub) { err('Usage: agentstack task add|list|show|complete|reopen|remove|export|sync'); return 2; }
+    if (sub === 'add') {
+      const title = rest.join(' ');
+      if (!title) { err('Usage: agentstack task add "title"'); return 2; }
+      const t = tasks.add({ title });
+      ok(`task ${t.display} added (id=${t.id})`);
+      return 0;
+    }
+    if (sub === 'list') {
+      const list = tasks.list();
+      if (!list.length) { console.log('No tasks'); return 0; }
+      for (const t of list) {
+        console.log(`  ${t.status === 'completed' ? '[x]' : '[ ]'} ${t.display}. ${t.title}  (${t.status})`);
+      }
+      return 0;
+    }
+    if (sub === 'show') {
+      const id = rest[0];
+      const t = tasks.getById(id);
+      if (!t) { err('task not found'); return 1; }
+      console.log(JSON.stringify(t, null, 2));
+      return 0;
+    }
+    if (sub === 'complete') {
+      const t = tasks.complete(rest[0]);
+      if (!t) { err('task not found'); return 1; }
+      ok(`task ${rest[0]} completed`);
+      return 0;
+    }
+    if (sub === 'reopen') {
+      const t = tasks.reopen(rest[0]);
+      if (!t) { err('task not found'); return 1; }
+      ok(`task ${rest[0]} reopened`);
+      return 0;
+    }
+    if (sub === 'remove') {
+      const ok2 = tasks.remove(rest[0]);
+      if (!ok2) { err('task not found'); return 1; }
+      ok(`task ${rest[0]} removed`);
+      return 0;
+    }
+    if (sub === 'export') {
+      const f = tasks.exportMarkdown(rest[0]);
+      ok(`tasks exported to ${f}`);
+      return 0;
+    }
+    if (sub === 'sync') {
+      const f = tasks.exportMarkdown();
+      ok(`Markdown view synced: ${f}`);
+      return 0;
+    }
+    if (sub === 'migrate') {
+      const r = tasks.migrateFromLegacy(rest[0]);
+      console.log(`Migration: imported=${r.imported} duplicates=${r.duplicates} backedUp=${r.backedUp || 'none'}`);
+      return r.imported >= 0 ? 0 : 1;
+    }
+    err('Usage: agentstack task add|list|show|complete|reopen|remove|export|sync|migrate');
+    return 2;
+  },
+
+  // ---- permissions --------------------------------------------------------------
+  permissions(args) {
+    const [sub, cat, mode] = args;
+    if (!sub) { err('Usage: agentstack permissions list|set|reset|audit'); return 2; }
+    if (sub === 'list') {
+      info('Permission categories');
+      for (const c of permissions.CATEGORIES) {
+        console.log(`  ${c} -> ${permissions.effectiveMode(c)}`);
+      }
+      return 0;
+    }
+    if (sub === 'set') {
+      if (!cat || !mode) { err('Usage: agentstack permissions set <category> <mode>'); return 2; }
+      try { const r = permissions.set(cat, mode); ok(`${r.category} -> ${r.mode} (${r.scope})`); return 0; }
+      catch (e) { err(e.message); return 1; }
+    }
+    if (sub === 'reset') { permissions.reset(); ok('permissions reset to defaults'); return 0; }
+    if (sub === 'audit') {
+      const a = permissions.audit();
+      console.log(JSON.stringify({ defaults: a.defaults, entries: a.entries, recent_log: a.log.slice(-10) }, null, 2));
+      return 0;
+    }
+    err('Usage: agentstack permissions list|set|reset|audit');
+    return 2;
+  },
+
+  // ---- compatibility --------------------------------------------------------------
+  compatibility(args) {
+    const [sub] = args;
+    const r = compat.report();
+    if (sub === 'check' || sub === 'report' || !sub) {
+      info('Compatibility report');
+      for (const c of r.checks) {
+        const mark = c.compatible === true ? '✓' : (c.compatible === null ? '?' : 'x');
+        console.log(`  ${mark} ${c.component}: ${c.version || 'unknown'}${c.message ? ' (' + c.message + ')' : ''}`);
+      }
+      return r.checks.every((c) => c.compatible !== false) ? 0 : 1;
+    }
+    err('Usage: agentstack compatibility [check|report]');
+    return 2;
+  },
+
   // ---- help -----------------------------------------------------------------
   help() {
-    console.log(`AgentStack — one clean system (Hermes brain + OpenClaw hands + Obsidian memory)
+    console.log(`AgentStack — compatibility & orchestration layer (Hermes + OpenClaw + Obsidian + providers + councils)
 
 Usage: agentstack <command> [args]
 
-  install [--token sk-or-...]   first-run setup — pre-ready, drop-in token
+  install [--token sk-or-...]   setup (--token DEPRECATED: use provider add)
+  provider list|add|test|remove|disable <name>
+  secrets doctor                 inspect credential storage + provider status
   doctor                         health check for the whole system
   status                         system overview
+  compatibility [check|report]   version compatibility registry
+  task add|list|show|complete|reopen|remove|export|sync|migrate
+  permissions list|set|reset|audit
   ask "question"                 route by intent (brain or hands)
   council "question"             cheap council (opt-in, --cheap-chairman for routine)
   note "text"                    append to shared vault
-  todo add|list|done <task>      shared task queue in the vault
+  todo add|list|done <task>      compatibility alias for task
   cost report|log|credits        cost-per-verified-success ledger
   skills                         list bundled skills
   audit                          security audit

@@ -7,18 +7,27 @@ on:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node-version: [22, 24]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ${{ matrix.node-version }}
+
       - name: Bash syntax check
+        shell: bash
         run: |
           bash -n bin/stack
           bash -n setup.sh
@@ -29,15 +38,27 @@ jobs:
           bash -n bridges/hermes-worker
           bash -n bridges/vault-note
           bash -n hooks/openclaw-wife-reviewer
+
       - name: Node CLI syntax + tests
+        shell: bash
         run: |
           node --check bin/agentstack.js
           npm test
+
       - name: Python syntax check
+        shell: bash
         run: |
           python -m py_compile council/council_v2.py
           python -m py_compile council/cost_ledger.py
           python -m py_compile council/vault_mcp.py
-      - name: Validate council imports (no network, offline smoke)
+
+      - name: Council import must succeed (no suppression)
+        shell: bash
         run: |
-          python -c "import council_v2; print('council_v2 imports OK')" || true
+          python -c "import sys; sys.path.insert(0, 'council'); import council_v2; print('council_v2 imports OK')"
+
+      - name: npm audit (fail on high/critical)
+        shell: bash
+        run: |
+          # P0: no suppression. npm audit fails CI on high/critical vulnerabilities.
+          npm audit --audit-level=high
