@@ -1,13 +1,13 @@
 {
   "name": "agentstack-app",
-  "version": "0.1.0",
-  "description": "AgentStack desktop — one clean system: Hermes brain + OpenClaw hands + Obsidian memory.",
+  "version": "0.2.0",
+  "description": "AgentStack desktop — compatibility & orchestration layer: Hermes brain + OpenClaw hands + Obsidian memory in one polished GUI.",
   "main": "main.js",
   "author": "Cyralyx",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis --x64"
+    "pack": "electron-packager . AgentStack --platform=win32 --arch=x64 --out=release --overwrite --icon=logo.ico --app-version=0.2.0"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -25,39 +25,22 @@
       "main.js",
       "preload.js",
       "index.html",
+      "styles.css",
+      "renderer.js",
       "logo.png",
       "logo.ico"
     ],
     "extraResources": [
-      {
-        "from": "../council",
-        "to": "council"
-      },
-      {
-        "from": "../modules",
-        "to": "modules"
-      },
-      {
-        "from": "../bin",
-        "to": "bin"
-      },
-      {
-        "from": "../bridges",
-        "to": "bridges"
-      },
-      {
-        "from": "../skills",
-        "to": "skills"
-      },
-      {
-        "from": "../config",
-        "to": "config"
-      }
+      { "from": "../council", "to": "council" },
+      { "from": "../lib", "to": "lib" },
+      { "from": "../modules", "to": "modules" },
+      { "from": "../bin", "to": "bin" },
+      { "from": "../bridges", "to": "bridges" },
+      { "from": "../skills", "to": "skills" },
+      { "from": "../config", "to": "config" }
     ],
     "win": {
-      "target": [
-        "nsis"
-      ],
+      "target": ["nsis"],
       "icon": "logo.ico"
     },
     "nsis": {
