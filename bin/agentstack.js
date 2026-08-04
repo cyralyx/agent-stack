@@ -37,6 +37,9 @@ const permissions = require(path.join(REPO_ROOT, 'lib', 'permissions'));
 const compat = require(path.join(REPO_ROOT, 'lib', 'compatibility'));
 const registry = require(path.join(REPO_ROOT, 'lib', 'providers', 'registry'));
 const routing = require(path.join(REPO_ROOT, 'lib', 'routing'));
+const security = require(path.join(REPO_ROOT, 'lib', 'security'));
+const events = require(path.join(REPO_ROOT, 'lib', 'events'));
+const api = require(path.join(REPO_ROOT, 'lib', 'api'));
 
 const HERMES_HOME = paths.hermesHome();
 const VAULT = process.env.STACK_VAULT || paths.defaultWorkspace();
@@ -167,34 +170,61 @@ const cmds = {
     return 0;
   },
 
-  // ---- doctor: full health check -------------------------------------------
-  doctor() {
-    info('AgentStack doctor');
-    let allOk = true;
+  // ---- doctor: full health check (supports --json) ---------------------------
+  doctor(args) {
+    const wantJson = (args || []).includes('--json');
+    const checks = [];
+    const add = (id, status, severity, message, repairable, suggested) => checks.push({ id, status, severity, message, repairable, suggested_action: suggested });
+
     const h = detectHermes();
-    if (h) ok(`Hermes (brain): ${h}`); else { err('Hermes not found'); allOk = false; }
     const oc = detectOpenClaw();
-    if (oc) ok(`OpenClaw (hands): ${oc}`); else { err('OpenClaw not found'); allOk = false; }
-    if (fs.existsSync(VAULT)) ok(`Vault (memory): ${VAULT}`); else { warn(`Vault missing: ${VAULT}`); }
+    if (h) add('component.hermes', 'pass', 'high', `Hermes detected (${h})`, false, null);
+    else add('component.hermes', 'fail', 'high', 'Hermes not found', true, 'install Hermes');
+    if (oc) add('component.openclaw', 'pass', 'high', `OpenClaw detected (${oc})`, false, null);
+    else add('component.openclaw', 'fail', 'high', 'OpenClaw not found', true, 'npm i -g openclaw');
+    if (fs.existsSync(VAULT)) add('component.vault', 'pass', 'medium', `Vault at ${VAULT}`, false, null);
+    else add('component.vault', 'warn', 'medium', `Vault missing: ${VAULT}`, true, 'create the workspace or set STACK_VAULT');
+
     const envf = path.join(HERMES_HOME, '.env');
-    if (fs.existsSync(envf)) {
-      const env = fs.readFileSync(envf, 'utf8');
-      ok(env.includes('OPENROUTER_API_KEY=') ? '.env: OPENROUTER_API_KEY set' : '.env: missing OPENROUTER_API_KEY');
-    } else { warn('.env missing'); }
+    const hasKey = fs.existsSync(envf) && fs.readFileSync(envf, 'utf8').includes('OPENROUTER_API_KEY=') && !fs.readFileSync(envf, 'utf8').includes('OPENROUTER_API_KEY=your_');
+    if (hasKey) add('provider.auth', 'pass', 'high', 'provider key present in .env', false, null);
+    else add('provider.auth', 'fail', 'high', 'no provider key configured', true, 'agentstack provider add openrouter');
 
     const cfg = path.join(HERMES_HOME, 'config.yaml');
-    if (fs.existsSync(cfg)) ok('config.yaml present'); else warn('config.yaml missing');
+    if (fs.existsSync(cfg)) add('config.present', 'pass', 'low', 'config.yaml present', false, null);
+    else add('config.present', 'warn', 'medium', 'config.yaml missing', true, 'run agentstack setup');
 
     const sk = path.join(HERMES_HOME, 'skills');
-    if (fs.existsSync(sk)) {
-      const count = fs.readdirSync(sk).filter((e) => !e.startsWith('.')).length;
-      ok(`skills: ${count} installed`);
-    } else warn('no skills installed');
+    const skillCount = fs.existsSync(sk) ? fs.readdirSync(sk).filter((e) => !e.startsWith('.')).length : 0;
+    if (fs.existsSync(sk)) add('config.skills', 'pass', 'low', `skills: ${skillCount} installed`, false, null);
+    else add('config.skills', 'warn', 'low', 'no skills installed', true, 'install the skills bundle');
 
-    if (h && fs.existsSync(path.join(HERMES_HOME, 'hooks'))) ok('hooks deployed');
+    const incompatible = [];
+    for (const c of compat.report().checks) {
+      if (c.compatible === false) incompatible.push(c.component);
+    }
+    if (incompatible.length) add('compatibility', 'fail', 'high', `incompatible: ${incompatible.join(', ')}`, true, 'check agentstack compatibility');
+    else add('compatibility', 'pass', 'medium', 'compatibility checks pass', false, null);
+
+    const failed = checks.filter((c) => c.status === 'fail');
+    const warned = checks.filter((c) => c.status === 'warn');
+    const overall = failed.length ? 'unsafe' : (warned.length ? 'degraded' : 'healthy');
+
+    if (wantJson) {
+      console.log(JSON.stringify({ status: overall, summary: { pass: checks.length - failed.length - warned.length, warn: warned.length, fail: failed.length }, checks }, null, 2));
+      return failed.length ? 1 : 0;
+    }
+
+    info(`AgentStack doctor — ${overall.toUpperCase()}`);
+    for (const c of checks) {
+      const mark = c.status === 'pass' ? '✓' : (c.status === 'warn' ? '!' : 'x');
+      const col = c.status === 'pass' ? C.green : (c.status === 'warn' ? C.yellow : C.red);
+      console.log(`  ${col}${mark}${C.reset} ${c.message}`);
+      if (c.suggested_action) console.log(`      → ${c.suggested_action}`);
+    }
     console.log();
-    ok(allOk ? 'Verdict: stack healthy' : 'Verdict: fix the x items above, then re-run agentstack doctor');
-    return allOk ? 0 : 1;
+    ok(overall === 'healthy' ? 'Verdict: healthy' : (overall === 'degraded' ? `${C.yellow}Verdict: degraded${C.reset}` : `${C.red}Verdict: fix the issues above${C.reset}`));
+    return failed.length ? 1 : 0;
   },
 
   // ---- status: overview -----------------------------------------------------
@@ -344,17 +374,72 @@ const cmds = {
     return 0;
   },
 
-  // ---- audit ----------------------------------------------------------------
+  // ---- security --------------------------------------------------------------
+  security(args) {
+    const [sub] = args;
+    if (!sub || sub === 'full') {
+      const r = security.full(REPO_ROOT);
+      info('Security audit (full)');
+      console.log(`  secrets: ${r.secrets.count} (${r.secrets.findings.length ? 'see below' : 'none'})`);
+      for (const f of r.secrets.findings) console.log(`    - ${f.file}: ${f.secret}`);
+      console.log(`  permissions: ${r.permissions.count}`);
+      for (const f of r.permissions.findings) console.log(`    - ${f.file}: ${f.issue}`);
+      console.log(`  skills: ${r.skills.count}`);
+      for (const f of r.skills.findings) console.log(`    - ${f.file}: ${f.issue}`);
+      console.log(`  providers: ${r.providers.count}`);
+      for (const f of r.providers.findings) console.log(`    - ${f.issue}`);
+      ok(r.all_clear ? 'all clear' : 'findings above (review before trusting claims)');
+      return r.all_clear ? 0 : 1;
+    }
+    if (sub === 'secrets') {
+      const f = security.scanSecrets(REPO_ROOT);
+      info(`Security secrets: ${f.length} finding(s)`);
+      for (const s of f) console.log(`  - ${s.file}: ${s.secret}`);
+      return f.length ? 1 : 0;
+    }
+    if (sub === 'permissions') {
+      const a = permissions.audit();
+      console.log(JSON.stringify({ defaults: a.defaults, entries: a.entries }, null, 2));
+      return 0;
+    }
+    if (sub === 'skills') {
+      const f = security.skills(REPO_ROOT);
+      info(`Security skills: ${f.length} finding(s)`);
+      for (const s of f) console.log(`  - ${s.file}: ${s.issue}`);
+      return f.length ? 1 : 0;
+    }
+    if (sub === 'config') {
+      const f = security.providerConfig();
+      info(`Security config: ${f.length} finding(s)`);
+      for (const s of f) console.log(`  - ${s.issue}`);
+      return f.length ? 1 : 0;
+    }
+    if (sub === 'dependencies') {
+      info('Security dependencies');
+      const r = security.dependencies(REPO_ROOT, { run: true });
+      console.log(`  ${r.status}: ${r.note || JSON.stringify(r.data && r.data.metadata) || ''}`);
+      return r.status === 'ok' || r.status === 'not_run' ? 0 : 1;
+    }
+    err('Usage: agentstack security secrets|dependencies|permissions|skills|config|full');
+    return 2;
+  },
+
+  // ---- api (localhost IPC for Cyralyx UI) ------------------------------------
+  api(args) {
+    const [sub] = args;
+    if (sub === 'serve') {
+      const port = parseInt(args[1] || '', 10) || 38765;
+      info(`Starting AgentStack API on 127.0.0.1:${port} (localhost only)`);
+      api.start(port).catch((e) => { err(`api failed to start: ${e.message}`); process.exit(1); });
+      return 0; // keeps serving until killed
+    }
+    err('Usage: agentstack api serve [port]');
+    return 2;
+  },
+
+  // ---- audit (kept; delegates to security) ------------------------------------
   audit() {
-    info('AgentStack security audit');
-    const r = bash(`cd "${REPO_ROOT}" && git grep -lnE "sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|OPENROUTER_API_KEY=.+" 2>/dev/null || true`);
-    const hits = (r.out || '').split('\n').filter((l) => l && !l.includes('hermes.env.example') && !l.includes('bin/'));
-    if (hits.length) { err(`secrets found: ${hits.join(', ')}`); return 1; }
-    ok('no secret values in tracked files');
-    ok('guardrails: Budget $10/mo + PromptInjection (verify in OpenRouter dashboard)');
-    const sk = path.join(HERMES_HOME, 'skills');
-    ok(fs.existsSync(sk) ? `skills installed: ${fs.readdirSync(sk).length}` : 'skills: none installed');
-    return 0;
+    return this.security(['full']);
   },
 
   // ---- telegram -------------------------------------------------------------
@@ -635,8 +720,13 @@ if (!cmd || cmd === 'help' || cmd === '-h' || cmd === '--help') {
   process.exit(0);
 }
 if (cmds[cmd]) {
-  process.exit(cmds[cmd](rest));
+  const code = cmds[cmd](rest);
+  // api serve starts a long-running server: don't call process.exit immediately.
+  if (!(cmd === 'api' && rest[0] === 'serve')) {
+    process.exit(typeof code === 'number' ? code : 0);
+  }
+} else {
+  console.error(`Unknown command: ${cmd}`);
+  cmds.help();
+  process.exit(2);
 }
-console.error(`Unknown command: ${cmd}`);
-cmds.help();
-process.exit(2);
